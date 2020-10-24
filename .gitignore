@@ -1,6 +1,5 @@
 *.code-workspace
 *.csv
-*.html
 *.Rds
 *.Rproj
 *.sqlite
@@ -18,7 +17,7 @@ __pycache__
 *_cache/
 *_files/
 data/
-images/
 markdown_output/
+renv/
 scratch*
 run_lintr.R
