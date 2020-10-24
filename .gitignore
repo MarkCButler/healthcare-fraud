@@ -1,0 +1,24 @@
+*.code-workspace
+*.csv
+*.html
+*.Rds
+*.Rproj
+*.sqlite
+.history
+.idea
+.ipynb_checkpoints
+.lintr
+.Rdata
+.Rhistory
+.Rprofile
+.Rproj.user
+.vscode
+__pycache__
+# The next two entries are for the knitr cache.
+*_cache/
+*_files/
+data/
+images/
+markdown_output/
+scratch*
+run_lintr.R
