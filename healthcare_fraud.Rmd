@@ -1,0 +1,342 @@
+---
+title: 'Healthcare Fraud Detection'
+output:
+  html_document:
+    code_folding: show
+    css: style.css
+    highlight: tango
+    number_sections: true
+    theme: yeti
+    toc: true
+    toc_depth: 2
+editor_options:
+  chunk_output_type: console
+---
+
+```{r, setup, message=FALSE, include=FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    fig.align = 'center',
+    comment = ''
+)
+
+library(dplyr)
+library(forcats)
+library(ggplot2)
+library(purrr)
+library(stringr)
+library(tidyr)
+```
+
+## Questions 1 {.tabset}
+
+### Questions {.unnumbered}
+
+How many medical doctors are there in the train outpatient dataset?
+
+How many medical doctors are there in the train inpatient dataset? Do they
+match with those from the outpatient record?
+
+Do those inpatient patients show worse health conditions (in terms of chronic
+diseases) than typical outpatient patients, or do those who have more visits
+to the providers have worse health conditions? Provide an analysis on these
+issues.
+
+How many distinct patients (BeneIDs) are there in the in/out-patient datasets?
+
+Do doctors serve for different providers? Study the distribution of hospital
+counts/doctor? Is it possible to characterize those doctors who move around
+among different providers?
+
+Do patients go to different hospitals? Study the distribution of hospital
+counts/patient? It is possible to characterize those patients who receive
+services from a lot of different hospitals?
+
+Do the same providers provide both inpatient and outpatient services?
+Summarize your finding.
+
+Do Some of the same patients receive both inpatient and outpatient services?
+Summarize your finding.
+
+### Answers {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, load-data, cache=TRUE}
+data_filenames <- list(
+    train_outpatient = 'data/Train_Outpatientdata-1542865627584.csv',
+    train_inpatient = 'data/Train_Inpatientdata-1542865627584.csv',
+    train_provider = 'data/Train-1542865627584.csv',
+    train_beneficiary = 'data/Train_Beneficiarydata-1542865627584.csv',
+    test_outpatient = 'data/Test_Outpatientdata-1542969243754.csv',
+    test_inpatient = 'data/Test_Inpatientdata-1542969243754.csv',
+    test_provider = 'data/Test-1542969243754.csv',
+    test_beneficiary = 'data/Test_Beneficiarydata-1542969243754.csv'
+)
+
+read_data <- function(file) {
+    data <- read.csv(file, stringsAsFactors = FALSE)
+    return(data)
+}
+
+data_frames <- map(data_filenames, read_data)
+
+train_ben <- data_frames$train_beneficiary
+train_in <- data_frames$train_inpatient
+train_out <- data_frames$train_outpatient
+train_prov <- data_frames$train_provider
+
+```
+
+```{r, questions-1a, cache=FALSE}
+doctor_colnames <- c('AttendingPhysician', 'OperatingPhysician',
+                     'OtherPhysician')
+get_doctors <- function(data) {
+    doctors <- reduce(data[doctor_colnames], union)
+    doctors <- setdiff(doctors, NA)
+    return(doctors)
+}
+
+# Number of inpatient and outpatient doctors, intersection between the two
+# sets.
+outpatient_doctors <- get_doctors(data_frames$train_outpatient)
+inpatient_doctors <-  get_doctors(data_frames$train_inpatient)
+# How many medical doctors are there in the train outpatient dataset?
+length(outpatient_doctors)
+# How many medical doctors are there in the train inpatient dataset?
+length(inpatient_doctors)
+# Do they match with those from the outpatient record?
+length(intersect(outpatient_doctors, inpatient_doctors))
+
+get_patients <- function(patient_data, visit_data, patient_type) {
+    patients <- patient_data %>%
+        filter(BeneID %in% visit_data$BeneID) %>%
+        mutate(type = patient_type)
+    visits <- visit_data %>%
+        group_by(BeneID) %>%
+        summarise(visit_count = n(), .groups = 'drop')
+    patients <- full_join(patients, visits, by = 'BeneID')
+    return(patients)
+}
+in_patients <- get_patients(
+    data_frames$train_beneficiary, data_frames$train_inpatient, 'inpatient'
+)
+out_patients <- get_patients(
+    data_frames$train_beneficiary, data_frames$train_outpatient, 'outpatient'
+)
+patients <- rbind(in_patients, out_patients,
+                  make.row.names = FALSE)
+
+chronic_conditions <- c(
+    'ChronicCond_Alzheimer', 'ChronicCond_Heartfailure',
+    'ChronicCond_KidneyDisease', 'ChronicCond_Cancer',
+    'ChronicCond_ObstrPulmonary', 'ChronicCond_Depression',
+    'ChronicCond_Diabetes', 'ChronicCond_IschemicHeart',
+    'ChronicCond_Osteoporasis', 'ChronicCond_rheumatoidarthritis',
+    'ChronicCond_stroke'
+)
+```
+
+</div>
+
+### Chronic conditions {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, show-chronic, ref.label='chronic', eval=FALSE}
+```
+
+```{r, chronic, cache=TRUE, echo=FALSE}
+patient_types <- c('inpatient', 'outpatient')
+
+for (patient_type in patient_types) {
+    to_plot <- patients %>%
+        filter(type == patient_type)
+    x_axis_values <- seq(min(to_plot$visit_count),
+                         max(to_plot$visit_count))
+    title <- str_c('Number of visits made by ', patient_type, 's')
+    fig <- ggplot(to_plot, aes(x = visit_count)) +
+        geom_bar(fill = 'navyblue') +
+        scale_x_discrete('Number of visits', limits = factor(x_axis_values)) +
+        ylab('Number of patients') +
+        ggtitle(title)
+    print(fig)
+}
+
+for (column_name in chronic_conditions) {
+
+    to_plot <- patients %>%
+        mutate(across(all_of(column_name),
+                      ~ fct_recode(factor(.), 'Y' = '1', 'N' = '2')))
+    condition <- str_replace(column_name, '^ChronicCond_', '')
+    title <- str_c('Distribution of chronic ', condition, ' condition')
+    legend_title <- str_c('Chronic ', condition)
+    fig <- ggplot(to_plot, aes_string(x = 'type', fill = column_name)) +
+        geom_bar(position = 'fill') +
+        scale_y_continuous('Fraction of patients') +
+        scale_x_discrete(name = '') +
+        scale_fill_discrete(legend_title) +
+        ggtitle(title)
+    print(fig)
+
+    for (patient_type in patient_types) {
+        to_plot_filtered <- to_plot %>%
+            filter(type == patient_type)
+        x_axis_values <- seq(min(to_plot_filtered$visit_count),
+                             max(to_plot_filtered$visit_count))
+        title <- str_c('Distribution of chronic ', condition, ' condition, ',
+                       patient_type, 's')
+        fig <- to_plot_filtered %>%
+            ggplot(aes_string(x = 'visit_count', fill = column_name)) +
+            geom_bar(position = 'fill') +
+            scale_x_discrete('Number of visits',
+                             limits = factor(x_axis_values)) +
+            ylab('Number of patients') +
+            ggtitle(title)
+        print(fig)
+    }
+}
+```
+
+</div>
+
+### Answers {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, questions-1b}
+# How many distinct patients (BeneIDs) are there in the in/out-patient datasets?
+in_patients$BeneID %>% unique() %>% length()
+out_patients$BeneID %>% unique() %>% length()
+
+get_providers_per_doctor <- function(data, patient_type) {
+    providers_per_doctor <- data %>%
+        select(Provider, all_of(doctor_colnames)) %>%
+        pivot_longer(all_of(doctor_colnames), names_to = 'role',
+                     values_to = 'doctor') %>%
+        drop_na(doctor) %>%
+        select(-role) %>%
+        distinct() %>%
+        group_by(doctor) %>%
+        summarise(provider_count = n(), .groups = 'drop') %>%
+        mutate(type = patient_type)
+    return(providers_per_doctor)
+}
+
+providers_per_doctor_in <- get_providers_per_doctor(train_in, 'inpatient')
+providers_per_doctor_out <- get_providers_per_doctor(train_out, 'outpatient')
+providers_per_doctor <- rbind(providers_per_doctor_in, providers_per_doctor_out,
+                              make.row.names = FALSE)
+
+# Checks
+nrow(providers_per_doctor_in)
+nrow(providers_per_doctor_out)
+
+get_providers_per_patient <- function(data, patient_type) {
+    providers_per_patient <- data %>%
+        select(Provider, BeneID) %>%
+        distinct() %>%
+        group_by(BeneID) %>%
+        summarise(provider_count = n(), .groups = 'drop') %>%
+        mutate(type = patient_type)
+    return(providers_per_patient)
+}
+
+providers_per_patient_in <- get_providers_per_patient(train_in, 'inpatient')
+providers_per_patient_out <- get_providers_per_patient(train_out, 'outpatient')
+providers_per_patient <- rbind(
+    providers_per_patient_in, providers_per_patient_out, make.row.names = FALSE
+)
+
+# Checks
+nrow(providers_per_patient_in)
+nrow(providers_per_patient_out)
+
+for (patient_type in patient_types) {
+    to_plot <- providers_per_doctor %>%
+        filter(type == patient_type)
+    x_axis_values <- seq(min(to_plot$provider_count),
+                         max(to_plot$provider_count))
+    title <- str_c('Number of providers per doctor for ', patient_type, 's')
+    fig <- ggplot(to_plot, aes(x = provider_count)) +
+        geom_bar(fill = 'navyblue') +
+        scale_x_discrete('Number of providers',
+                         limits = factor(x_axis_values)) +
+        ylab('Number of doctors') +
+        ggtitle(title)
+    print(fig)
+}
+
+for (patient_type in patient_types) {
+    to_plot <- providers_per_patient %>%
+        filter(type == patient_type)
+    x_axis_values <- seq(min(to_plot$provider_count),
+                         max(to_plot$provider_count))
+    title <- str_c('Number of providers per patient for ', patient_type, 's')
+    fig <- ggplot(to_plot, aes(x = provider_count)) +
+        geom_bar(fill = 'navyblue') +
+        scale_x_discrete('Number of providers',
+                         limits = factor(x_axis_values)) +
+        ylab('Number of patients') +
+        ggtitle(title)
+    print(fig)
+}
+
+# Select the doctors / patients that use many providers.  See what they have
+# in common, aside from all being for outpatient visits.
+#doctors_to_check <- filter(providers_per_doctor, provider_count >= 5)
+#patients_to_check <- filter(providers_per_patient, provider_count >= 11)
+#
+#check_doctors <- train_out %>%
+#    pivot_longer(all_of(doctor_colnames), names_to = 'doctor_role',
+#                 values_to = 'doctor') %>%
+#    filter(doctor %in% doctors_to_check$doctor)
+#check_patients <- train_out %>%
+#    filter(BeneID %in% patients_to_check$BeneID)
+
+inpatient_providers <- unique(train_in$Provider)
+outpatient_providers <- unique(train_out$Provider)
+in_or_out_providers <- intersect(inpatient_providers, outpatient_providers)
+length(inpatient_providers)
+length(outpatient_providers)
+length(in_or_out_providers)
+
+inpatients <- unique(train_in$BeneID)
+outpatients <- unique(train_out$BeneID)
+in_or_out_patients <- intersect(inpatients, outpatients)
+length(inpatients)
+length(outpatients)
+length(in_or_out_patients)
+```
+
+</div>
+
+## Questions 2 {.tabset}
+
+### Questions {.unnumbered}
+
+Study the relationship between the patient ages (at the time of their
+service) and the counts of medical claims.
+
+Study the relationship between the patient age and their chornic conditions.
+Within the train-samples, do these chronic conditions show a definite trend
+with respect to increasing ages?
+
+In order to make sure the insurance premiums can cover the claims, the
+insurance company would need to categorize the patients according to their
+resource usage.
+
+In answering the question that what types of patients would make more
+outpatient visits, please provide your finding.
+
+In answering what types of patients would make more inpatient service claims,
+please provide your findings.
+
+From the prospect of the insurance company, the reimbursed amounts are their
+coverage on the claims.  Please analyze the patterns of the total reimbursed
+amounts (or average reimbursed amounts/visit) vs different types of patients.
+
+From the prospect of the providers, the sum of reimbursed amounts and
+deductibles are flowing to the providers. Based on this, analyze which types
+of patients contribute more to the providers in terms of the aggregate charges
+or the average charge per visit. 
