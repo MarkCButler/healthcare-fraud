@@ -23,9 +23,15 @@ knitr::opts_chunk$set(
 library(dplyr)
 library(forcats)
 library(ggplot2)
+library(lubridate)
 library(purrr)
+library(reticulate)
+library(scales)
 library(stringr)
 library(tidyr)
+
+# Use the conda environment 'fraud' created for the project.
+use_condaenv(condaenv = 'fraud')
 ```
 
 ## Questions 1 {.tabset}
@@ -62,7 +68,10 @@ Summarize your finding.
 
 <div class="code-block">
 
-```{r, load-data, cache=TRUE}
+```{r, data-frames, cache=TRUE}
+# This chunk loads csv data and uses dplyr operations to create data frames
+# that are used for data analysis.
+
 data_filenames <- list(
     train_outpatient = 'data/Train_Outpatientdata-1542865627584.csv',
     train_inpatient = 'data/Train_Inpatientdata-1542865627584.csv',
@@ -81,53 +90,63 @@ read_data <- function(file) {
 
 data_frames <- map(data_filenames, read_data)
 
-train_ben <- data_frames$train_beneficiary
-train_in <- data_frames$train_inpatient
-train_out <- data_frames$train_outpatient
-train_prov <- data_frames$train_provider
-
-```
-
-```{r, questions-1a, cache=FALSE}
-doctor_colnames <- c('AttendingPhysician', 'OperatingPhysician',
-                     'OtherPhysician')
-get_doctors <- function(data) {
-    doctors <- reduce(data[doctor_colnames], union)
-    doctors <- setdiff(doctors, NA)
-    return(doctors)
+# Characterize missing values, ignoring columns such as ClmDiagnosisCode_n and
+# ClmProcedureCode_n.
+get_na_counts <- function(data) {
+    na_counts <- data.frame(name = colnames(data),
+                            count = as.integer(colSums(is.na(data))),
+                            stringsAsFactors = FALSE) %>%
+        filter(str_detect(name, 'Clm.+Code', negate = TRUE)) %>%
+        arrange(desc(count)) %>%
+        filter(count != 0)
+    return(na_counts)
 }
 
-# Number of inpatient and outpatient doctors, intersection between the two
-# sets.
-outpatient_doctors <- get_doctors(data_frames$train_outpatient)
-inpatient_doctors <-  get_doctors(data_frames$train_inpatient)
-# How many medical doctors are there in the train outpatient dataset?
-length(outpatient_doctors)
-# How many medical doctors are there in the train inpatient dataset?
-length(inpatient_doctors)
-# Do they match with those from the outpatient record?
-length(intersect(outpatient_doctors, inpatient_doctors))
+na_counts <- map(data_frames,
+    get_na_counts)
 
-get_patients <- function(patient_data, visit_data, patient_type) {
-    patients <- patient_data %>%
-        filter(BeneID %in% visit_data$BeneID) %>%
-        mutate(type = patient_type)
-    visits <- visit_data %>%
+get_visit_counts <- function(visit_data) {
+    visit_counts <- visit_data %>%
         group_by(BeneID) %>%
         summarise(visit_count = n(), .groups = 'drop')
-    patients <- full_join(patients, visits, by = 'BeneID')
-    return(patients)
+    return(visit_counts)
 }
-in_patients <- get_patients(
-    data_frames$train_beneficiary, data_frames$train_inpatient, 'inpatient'
-)
-out_patients <- get_patients(
-    data_frames$train_beneficiary, data_frames$train_outpatient, 'outpatient'
-)
-patients <- rbind(in_patients, out_patients,
-                  make.row.names = FALSE)
+augment_visit_data <- function(visit_data, patient_data, visit_type) {
+    visit_counts <- get_visit_counts(visit_data)
+    visit_data <- visit_data %>%
+        mutate(type = visit_type) %>%
+        mutate(across(c(ClaimStartDt, ClaimEndDt),
+                      ~ as_date(., format = '%Y-%m-%d'))) %>%
+        left_join(visit_counts, by = 'BeneID')
+    if (visit_type == 'inpatient') {
+        visit_data <- visit_data %>%
+            mutate(across(c('AdmissionDt', 'DischargeDt'),
+                          ~ as_date(., format = '%Y-%m-%d')))
+    }
+    patient_data <- patient_data %>%
+        select(BeneID, DOB, DOD) %>%
+        mutate(across(c(DOB, DOD),
+                      ~ as_date(., format = '%Y-%m-%d')))
+    visit_data <- left_join(visit_data, patient_data, by = 'BeneID') %>%
+        mutate(age = (ClaimStartDt - DOB) / 365.24)
 
-chronic_conditions <- c(
+    return(visit_data)
+}
+
+inpatient_visits <- augment_visit_data(data_frames$train_inpatient,
+                                       data_frames$train_beneficiary,
+                                       visit_type = 'inpatient')
+outpatient_visits <- augment_visit_data(data_frames$train_outpatient,
+                                        data_frames$train_beneficiary,
+                                        visit_type = 'outpatient')
+inpatient_only_columns <- c('AdmissionDt', 'DischargeDt', 'DiagnosisGroupCode')
+patient_visits <- rbind(
+    select(inpatient_visits, -all_of(inpatient_only_columns)),
+    outpatient_visits,
+    make.row.names = FALSE
+)
+
+chronic_conditions_raw <- c(
     'ChronicCond_Alzheimer', 'ChronicCond_Heartfailure',
     'ChronicCond_KidneyDisease', 'ChronicCond_Cancer',
     'ChronicCond_ObstrPulmonary', 'ChronicCond_Depression',
@@ -135,6 +154,131 @@ chronic_conditions <- c(
     'ChronicCond_Osteoporasis', 'ChronicCond_rheumatoidarthritis',
     'ChronicCond_stroke'
 )
+clean_condition_names <- function(column_names) {
+    new_names <- str_replace(column_names, '^ChronicCond_', '')
+    new_names <- case_when(
+        str_detect(new_names, 'Heartfailure') ~ 'HeartFailure',
+        str_detect(new_names, 'Osteoporasis') ~ 'Osteoporosis',
+        str_detect(new_names, 'rheumatoidarthritis') ~ 'RheumatoidArthritis',
+        str_detect(new_names, 'stroke') ~ 'Stroke',
+        TRUE ~ new_names
+    )
+    return(new_names)
+}
+chronic_conditions <- clean_condition_names(chronic_conditions_raw)
+
+patient_ages <- patient_visits %>%
+    select(BeneID, age) %>%
+    group_by(BeneID) %>%
+    summarise(age = median(age), .groups = 'drop')
+
+augment_patient_data <- function(patient_data, visit_data, visit_type) {
+    patient_data <- patient_data %>%
+        filter(BeneID %in% visit_data$BeneID) %>%
+        mutate(type = visit_type) %>%
+        rename_with(.fn = clean_condition_names,
+                    .cols = all_of(chronic_conditions_raw)) %>%
+        mutate(across(all_of(chronic_conditions),
+                      ~ fct_recode(factor(.), 'Y' = '1', 'N' = '2')))
+    visit_counts <- get_visit_counts(visit_data)
+    provider_counts <- visit_data %>%
+        select(Provider, BeneID) %>%
+        distinct() %>%
+        group_by(BeneID) %>%
+        summarise(provider_count = n(), .groups = 'drop')
+    # For both the training and test sets, the inpatient data frame has
+    # missing values for DeductibleAmtPaid, but the minimum value for the
+    # column is about $1000.  So in this context, it seems that NA is used in
+    # place of zero.
+    #
+    # For the outpatient data frames, however, there are many zero values in
+    # DeductibleAmtPaid but no missing values.
+    #
+    # However, it appears that there are missing values in
+    # InscClaimAmtReimbursed and DeductibleAmtPaid for both the inpatient and
+    # outpatient data.  For a number of rows, InscClaimAmtReimbursed and
+    # DeductibleAmtPaid are both zero, which gives a cost of zero for the
+    # visit to the hospital.  For the training set of outpatient visits, for
+    # instance, there are about 19k rows like this (out of about 520k). Data
+    # analysis involving vist cost needs to take account of this.
+    payments <- visit_data %>%
+        select(BeneID, InscClaimAmtReimbursed, DeductibleAmtPaid) %>%
+        replace_na(list(DeductibleAmtPaid = 0)) %>%
+        mutate(visit_cost = InscClaimAmtReimbursed + DeductibleAmtPaid) %>%
+        filter(visit_cost != 0) %>%
+        select(-DeductibleAmtPaid) %>%
+        group_by(BeneID) %>%
+        summarise(
+            total_reimbursed = sum(InscClaimAmtReimbursed),
+            reimbursed_per_visit = mean(InscClaimAmtReimbursed),
+            total_charged = sum(visit_cost),
+            charged_per_visit = mean(visit_cost),
+            .groups = 'drop'
+        )
+    patient_data <- patient_data %>%
+        left_join(payments, by = 'BeneID') %>%
+        left_join(patient_ages, by = 'BeneID') %>%
+        left_join(provider_counts, by = 'BeneID') %>%
+        left_join(visit_counts, by = 'BeneID') %>%
+        mutate(type = visit_type)
+
+    return(patient_data)
+}
+inpatients <- augment_patient_data(
+    data_frames$train_beneficiary,
+    data_frames$train_inpatient,
+    'inpatient'
+)
+outpatients <- augment_patient_data(
+    data_frames$train_beneficiary,
+    data_frames$train_outpatient,
+    'outpatient'
+)
+patients <- rbind(inpatients, outpatients,
+                  make.row.names = FALSE)
+
+doctor_colnames <- c('AttendingPhysician', 'OperatingPhysician',
+                     'OtherPhysician')
+
+get_doctor_data <- function(visit_data, visit_type) {
+    doctor_data <- visit_data %>%
+        select(Provider, all_of(doctor_colnames)) %>%
+        pivot_longer(all_of(doctor_colnames), names_to = 'role',
+                     values_to = 'doctor') %>%
+        select(-role) %>%
+        drop_na(doctor) %>%
+        distinct() %>%
+        group_by(doctor) %>%
+        summarise(provider_count = n(), .groups = 'drop') %>%
+        mutate(type = visit_type)
+    return(doctor_data)
+}
+
+in_doctors <- get_doctor_data(
+    data_frames$train_inpatient,
+    'inpatient'
+)
+out_doctors <- get_doctor_data(
+    data_frames$train_outpatient,
+    'outpatient'
+)
+doctors <- rbind(in_doctors, out_doctors,
+                              make.row.names = FALSE)
+
+```
+
+```{r, questions-1a, cache=TRUE}
+# Number of inpatient and outpatient doctors, intersection between the two
+# sets.
+in_doctors_vec <-  in_doctors$doctor
+out_doctors_vec <- out_doctors$doctor
+
+# How many medical doctors are there in the train inpatient dataset?
+length(in_doctors_vec)
+# How many medical doctors are there in the train outpatient dataset?
+length(out_doctors_vec)
+# Do they match with those from the outpatient record?
+length(intersect(in_doctors_vec, out_doctors_vec))
 ```
 
 </div>
@@ -143,18 +287,49 @@ chronic_conditions <- c(
 
 <div class="code-block">
 
-```{r, show-chronic, ref.label='chronic', eval=FALSE}
+```{r, show-chronic, ref.label='chronic-1', eval=FALSE}
 ```
 
-```{r, chronic, cache=TRUE, echo=FALSE}
-patient_types <- c('inpatient', 'outpatient')
+```{r, chronic-1, cache=TRUE, echo=FALSE}
+chronic_condition_labels <- case_when(
+    str_detect(chronic_conditions, 'Alzheimer') ~ 'Alzheimer\'s disease',
+    str_detect(chronic_conditions, 'HeartFailure') ~ 'heart failure',
+    str_detect(chronic_conditions, 'KidneyDisease') ~ 'kidney disease',
+    str_detect(chronic_conditions, 'ObstrPulmonary') ~ 'obstructive\npulmonary\ndisease',
+    str_detect(chronic_conditions, 'IschemicHeart') ~ 'ischemic heart',
+    str_detect(chronic_conditions, 'RheumatoidArthritis') ~ 'rheumatoid arthritis',
+    TRUE ~ tolower(chronic_conditions)
+)
+names(chronic_condition_labels) <- chronic_conditions
 
-for (patient_type in patient_types) {
+first_char_to_upper <- function(label) {
+   first_char <- str_sub(label, 1, 1)
+    str_sub(label, 1, 1) <- str_to_upper(first_char)
+    return(label)
+}
+
+# The input to this function is a vector of strings that specify a chronic
+# condition.  The strings in the vector are column names such as
+# 'IschemicHeart'.  The vector returned by the function has strings that work
+# better in labelling the y axis of a plot, e.g., 'IschemicHeart' has been
+# replaced by 'Ischemic heart'.
+convert_to_labels <- function(condition_vec) {
+    labels <- chronic_condition_labels[condition_vec] %>%
+        first_char_to_upper() %>%
+        # Replace only the first newline (in cases where 2 newlines are used
+        # in legend titles), so that very long labels still include a newline.
+        str_replace('\n', ' ')
+    return(labels)
+}
+
+visit_types <- c('inpatient', 'outpatient')
+
+for (visit_type in visit_types) {
     to_plot <- patients %>%
-        filter(type == patient_type)
+        filter(type == visit_type)
     x_axis_values <- seq(min(to_plot$visit_count),
                          max(to_plot$visit_count))
-    title <- str_c('Number of visits made by ', patient_type, 's')
+    title <- str_c('Number of visits made by ', visit_type, 's')
     fig <- ggplot(to_plot, aes(x = visit_count)) +
         geom_bar(fill = 'navyblue') +
         scale_x_discrete('Number of visits', limits = factor(x_axis_values)) +
@@ -164,33 +339,31 @@ for (patient_type in patient_types) {
 }
 
 for (column_name in chronic_conditions) {
+    condition_label <- chronic_condition_labels[column_name]
+    legend_title <- first_char_to_upper(condition_label)
+    condition_label <- str_replace_all(condition_label, '\n', ' ')
+    title_base <- str_c('Distribution of ', condition_label)
 
-    to_plot <- patients %>%
-        mutate(across(all_of(column_name),
-                      ~ fct_recode(factor(.), 'Y' = '1', 'N' = '2')))
-    condition <- str_replace(column_name, '^ChronicCond_', '')
-    title <- str_c('Distribution of chronic ', condition, ' condition')
-    legend_title <- str_c('Chronic ', condition)
-    fig <- ggplot(to_plot, aes_string(x = 'type', fill = column_name)) +
+    fig <- ggplot(patients, aes_string(x = 'type', fill = column_name)) +
         geom_bar(position = 'fill') +
         scale_y_continuous('Fraction of patients') +
         scale_x_discrete(name = '') +
         scale_fill_discrete(legend_title) +
-        ggtitle(title)
+        ggtitle(title_base)
     print(fig)
 
-    for (patient_type in patient_types) {
-        to_plot_filtered <- to_plot %>%
-            filter(type == patient_type)
-        x_axis_values <- seq(min(to_plot_filtered$visit_count),
-                             max(to_plot_filtered$visit_count))
-        title <- str_c('Distribution of chronic ', condition, ' condition, ',
-                       patient_type, 's')
-        fig <- to_plot_filtered %>%
+    for (visit_type in visit_types) {
+        to_plot <- patients %>%
+            filter(type == visit_type)
+        x_axis_values <- seq(min(to_plot$visit_count),
+                             max(to_plot$visit_count))
+        title <- str_c(title_base, ', ', visit_type, 's')
+        fig <- to_plot %>%
             ggplot(aes_string(x = 'visit_count', fill = column_name)) +
             geom_bar(position = 'fill') +
             scale_x_discrete('Number of visits',
                              limits = factor(x_axis_values)) +
+            scale_fill_discrete(legend_title) +
             ylab('Number of patients') +
             ggtitle(title)
         print(fig)
@@ -204,60 +377,21 @@ for (column_name in chronic_conditions) {
 
 <div class="code-block">
 
-```{r, questions-1b}
+```{r, questions-1b, cache=TRUE}
 # How many distinct patients (BeneIDs) are there in the in/out-patient datasets?
-in_patients$BeneID %>% unique() %>% length()
-out_patients$BeneID %>% unique() %>% length()
+inpatients_vec <- inpatients$BeneID %>% unique()
+length(inpatients_vec)
+outpatients_vec <- outpatients$BeneID %>% unique()
+length(outpatients_vec)
+in_out_patients_vec <- intersect(inpatients_vec, outpatients_vec)
+length(in_out_patients_vec)
 
-get_providers_per_doctor <- function(data, patient_type) {
-    providers_per_doctor <- data %>%
-        select(Provider, all_of(doctor_colnames)) %>%
-        pivot_longer(all_of(doctor_colnames), names_to = 'role',
-                     values_to = 'doctor') %>%
-        drop_na(doctor) %>%
-        select(-role) %>%
-        distinct() %>%
-        group_by(doctor) %>%
-        summarise(provider_count = n(), .groups = 'drop') %>%
-        mutate(type = patient_type)
-    return(providers_per_doctor)
-}
-
-providers_per_doctor_in <- get_providers_per_doctor(train_in, 'inpatient')
-providers_per_doctor_out <- get_providers_per_doctor(train_out, 'outpatient')
-providers_per_doctor <- rbind(providers_per_doctor_in, providers_per_doctor_out,
-                              make.row.names = FALSE)
-
-# Checks
-nrow(providers_per_doctor_in)
-nrow(providers_per_doctor_out)
-
-get_providers_per_patient <- function(data, patient_type) {
-    providers_per_patient <- data %>%
-        select(Provider, BeneID) %>%
-        distinct() %>%
-        group_by(BeneID) %>%
-        summarise(provider_count = n(), .groups = 'drop') %>%
-        mutate(type = patient_type)
-    return(providers_per_patient)
-}
-
-providers_per_patient_in <- get_providers_per_patient(train_in, 'inpatient')
-providers_per_patient_out <- get_providers_per_patient(train_out, 'outpatient')
-providers_per_patient <- rbind(
-    providers_per_patient_in, providers_per_patient_out, make.row.names = FALSE
-)
-
-# Checks
-nrow(providers_per_patient_in)
-nrow(providers_per_patient_out)
-
-for (patient_type in patient_types) {
-    to_plot <- providers_per_doctor %>%
-        filter(type == patient_type)
+for (visit_type in visit_types) {
+    to_plot <- doctors %>%
+        filter(type == visit_type)
     x_axis_values <- seq(min(to_plot$provider_count),
                          max(to_plot$provider_count))
-    title <- str_c('Number of providers per doctor for ', patient_type, 's')
+    title <- str_c('Number of providers per doctor for ', visit_type, 's')
     fig <- ggplot(to_plot, aes(x = provider_count)) +
         geom_bar(fill = 'navyblue') +
         scale_x_discrete('Number of providers',
@@ -267,12 +401,12 @@ for (patient_type in patient_types) {
     print(fig)
 }
 
-for (patient_type in patient_types) {
-    to_plot <- providers_per_patient %>%
-        filter(type == patient_type)
+for (visit_type in visit_types) {
+    to_plot <- patients %>%
+        filter(type == visit_type)
     x_axis_values <- seq(min(to_plot$provider_count),
                          max(to_plot$provider_count))
-    title <- str_c('Number of providers per patient for ', patient_type, 's')
+    title <- str_c('Number of providers per patient for ', visit_type, 's')
     fig <- ggplot(to_plot, aes(x = provider_count)) +
         geom_bar(fill = 'navyblue') +
         scale_x_discrete('Number of providers',
@@ -282,31 +416,12 @@ for (patient_type in patient_types) {
     print(fig)
 }
 
-# Select the doctors / patients that use many providers.  See what they have
-# in common, aside from all being for outpatient visits.
-#doctors_to_check <- filter(providers_per_doctor, provider_count >= 5)
-#patients_to_check <- filter(providers_per_patient, provider_count >= 11)
-#
-#check_doctors <- train_out %>%
-#    pivot_longer(all_of(doctor_colnames), names_to = 'doctor_role',
-#                 values_to = 'doctor') %>%
-#    filter(doctor %in% doctors_to_check$doctor)
-#check_patients <- train_out %>%
-#    filter(BeneID %in% patients_to_check$BeneID)
-
-inpatient_providers <- unique(train_in$Provider)
-outpatient_providers <- unique(train_out$Provider)
-in_or_out_providers <- intersect(inpatient_providers, outpatient_providers)
-length(inpatient_providers)
-length(outpatient_providers)
-length(in_or_out_providers)
-
-inpatients <- unique(train_in$BeneID)
-outpatients <- unique(train_out$BeneID)
-in_or_out_patients <- intersect(inpatients, outpatients)
-length(inpatients)
-length(outpatients)
-length(in_or_out_patients)
+in_providers_vec <- unique(inpatient_visits$Provider)
+out_providers_vec <- unique(outpatient_visits$Provider)
+in_out_providers_vec <- intersect(in_providers_vec, out_providers_vec)
+length(in_providers_vec)
+length(out_providers_vec)
+length(in_out_providers_vec)
 ```
 
 </div>
@@ -318,16 +433,14 @@ length(in_or_out_patients)
 Study the relationship between the patient ages (at the time of their
 service) and the counts of medical claims.
 
-Study the relationship between the patient age and their chornic conditions.
+Study the relationship between the patient age and their chronic conditions.
 Within the train-samples, do these chronic conditions show a definite trend
 with respect to increasing ages?
 
 In order to make sure the insurance premiums can cover the claims, the
 insurance company would need to categorize the patients according to their
-resource usage.
-
-In answering the question that what types of patients would make more
-outpatient visits, please provide your finding.
+resource usage. In answering the question that what types of patients would
+make more outpatient visits, please provide your finding.
 
 In answering what types of patients would make more inpatient service claims,
 please provide your findings.
@@ -339,4 +452,140 @@ amounts (or average reimbursed amounts/visit) vs different types of patients.
 From the prospect of the providers, the sum of reimbursed amounts and
 deductibles are flowing to the providers. Based on this, analyze which types
 of patients contribute more to the providers in terms of the aggregate charges
-or the average charge per visit. 
+or the average charge per visit.
+
+### Answers {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, questions-2a, cache=TRUE}
+for (visit_type in visit_types) {
+    to_plot <- patient_visits %>%
+        filter(type == visit_type) %>%
+        mutate(age = as.integer(round(age)))
+    title <- str_c('Number of visits by patient age, ', visit_type, 's')
+    fig <- ggplot(to_plot, aes(x = age)) +
+        geom_histogram(fill = 'navyblue', bins = 20) +
+        ylab('Number of visits') +
+        xlab('Patient age') +
+        ggtitle(title)
+    print(fig)
+}
+```
+
+</div>
+
+### Chronic conditions {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, chronic-2, cache=TRUE}
+for (column_name in chronic_conditions) {
+    condition_label <- chronic_condition_labels[column_name]
+    legend_title <- first_char_to_upper(condition_label)
+    condition_label <- str_replace_all(condition_label, '\n', ' ')
+    for (visit_type in visit_types) {
+        to_plot <- patients %>%
+            filter(type == visit_type) %>%
+            mutate(age = as.integer(round(age)))
+
+        title <- str_c('Distribution of ', condition_label,
+                       ' by age, ', visit_type, 's'
+        )
+        fig <- to_plot %>%
+            ggplot(aes(x = age)) +
+            geom_histogram(
+                aes_string(fill = column_name), position = 'identity',
+                bins = 20, alpha = 0.15
+            ) +
+            geom_freqpoly(
+                aes_string(color = column_name), position = 'identity',
+                bins = 20, size = 0.7
+            ) +
+            ylab('Number of patients') +
+            xlab('Patient age') +
+            labs(fill = legend_title, color = legend_title) +
+            ggtitle(title)
+        print(fig)
+    }
+}
+```
+
+</div>
+
+### Number of visits {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, questions-2b, cache=FALSE}
+for (visit_type in visit_types) {
+    to_plot <- patients %>%
+        filter(type == visit_type) %>%
+        select(all_of(chronic_conditions))
+    to_plot_vec <- colSums(to_plot == 'Y')
+    vec_labels <- convert_to_labels(names(to_plot_vec)) %>%
+        factor() %>%
+        reorder(to_plot_vec)
+    to_plot <- data.frame(label = vec_labels, visit_count = to_plot_vec)
+    title <- str_c('Number of visits, ', visit_type, 's')
+    fig <- ggplot(to_plot, aes(x = label, y = visit_count)) +
+        geom_col(aes(fill = label)) +
+        xlab('Chronic condition') +
+        ylab('Number of visits') +
+        coord_flip() +
+        guides(fill = FALSE) +
+        ggtitle(title)
+    print(fig)
+}
+```
+
+</div>
+
+### Payments {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, payments, cache=FALSE}
+payment_colnames <- c('total_reimbursed', 'reimbursed_per_visit',
+                      'total_charged', 'charged_per_visit')
+payment_labels <- c(
+    'Total payment by insurance per patient',
+    'Mean payment by insurance per patient per visit',
+    'Total paid to hospitals per patient',
+    'Mean paid to hospital per patient per visit'
+)
+names(payment_labels) <- payment_colnames
+
+for (visit_type in visit_types) {
+    to_select <- c(payment_colnames, chronic_conditions)
+    to_plot <- patients %>%
+        filter(type == visit_type) %>%
+        select(all_of(to_select)) %>%
+        # Patients for which the only visit has visit_cost == 0 show up with
+        # missing values for the columns in payment_colnames.
+        drop_na() %>%
+        # A logarithmic scale will be used so 0 is replaced by 1.
+        mutate(across(all_of(payment_colnames),
+                      ~ replace(., (.) == 0, 1))) %>%
+        pivot_longer(all_of(chronic_conditions), names_to = 'condition',
+                     values_to = 'value') %>%
+        filter(value == 'Y') %>%
+        select(-value) %>%
+        # Modify the conditions names to improve plot readability.
+        mutate(condition = convert_to_labels(condition))
+    for (column_name in payment_colnames) {
+        title <- str_c(payment_labels[column_name], ', ', visit_type, 's')
+        fig <- ggplot(to_plot, aes_string(x = 'condition', y = column_name)) +
+            geom_boxplot(aes(fill = condition)) +
+            scale_y_continuous('Payment amount', trans = 'log10',
+                               labels = label_dollar()) +
+            xlab('Chronic condition') +
+            coord_flip() +
+            guides(fill = FALSE) +
+            ggtitle(title)
+        print(fig)
+    }
+}
+```
+
+</div>
