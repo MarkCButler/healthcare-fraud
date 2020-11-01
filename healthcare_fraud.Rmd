@@ -21,12 +21,14 @@ knitr::opts_chunk$set(
 )
 
 library(dplyr)
+library(DT)
 library(forcats)
 library(ggplot2)
 library(lubridate)
 library(purrr)
 library(reticulate)
 library(scales)
+library(stlplus)
 library(stringr)
 library(tidyr)
 
@@ -84,7 +86,8 @@ data_filenames <- list(
 )
 
 read_data <- function(file) {
-    data <- read.csv(file, stringsAsFactors = FALSE)
+    data <- read.csv(file, stringsAsFactors = FALSE,
+                     na.strings = c('NA', ''))
     return(data)
 }
 
@@ -103,7 +106,7 @@ get_na_counts <- function(data) {
 }
 
 na_counts <- map(data_frames,
-    get_na_counts)
+                 get_na_counts)
 
 get_visit_counts <- function(visit_data) {
     visit_counts <- visit_data %>%
@@ -111,17 +114,57 @@ get_visit_counts <- function(visit_data) {
         summarise(visit_count = n(), .groups = 'drop')
     return(visit_counts)
 }
+
+
+# For time-series analysis, we want dates binned into weekly periods.  In
+# order to facilite time-series analysis, generate a data frame of dates
+# corresponding to the beginning of each weekly period.  Avoid errors
+# associated with partial weeks at the end of a year by using lubridate's
+# isoweek and isoyear functions.
+get_claim_dates <- function(inpatient_data, outpatient_data) {
+
+    all_claim_dates <- c(inpatient_data$ClaimStartDt,
+                         outpatient_data$ClaimStartDt) %>%
+        as_date(format = '%Y-%m-%d')
+    start_date <- min(all_claim_dates)
+    end_date <- max(all_claim_dates)
+    daily_dates <- seq(start_date, end_date, by = 1)
+
+    weekly_dates <- data.frame(date = daily_dates) %>%
+        mutate(year = isoyear(date), week = isoweek(date)) %>%
+        group_by(year, week) %>%
+        summarise(week_date = min(date), .groups = 'drop')
+
+    claim_dates <- list(
+        daily = data.frame(ClaimStartDt = daily_dates),
+        weekly = weekly_dates
+    )
+
+    return(claim_dates)
+}
+
+claim_dates <- get_claim_dates(
+    data_frames$train_inpatient, data_frames$train_outpatient
+)
+
 augment_visit_data <- function(visit_data, patient_data, visit_type) {
     visit_counts <- get_visit_counts(visit_data)
     visit_data <- visit_data %>%
         mutate(type = visit_type) %>%
         mutate(across(c(ClaimStartDt, ClaimEndDt),
                       ~ as_date(., format = '%Y-%m-%d'))) %>%
+        mutate(year = isoyear(ClaimStartDt),
+               week = isoweek(ClaimStartDt)) %>%
+        left_join(claim_dates$weekly, by = c('year', 'week')) %>%
+        select(-c(year, week)) %>%
         left_join(visit_counts, by = 'BeneID')
     if (visit_type == 'inpatient') {
         visit_data <- visit_data %>%
-            mutate(across(c('AdmissionDt', 'DischargeDt'),
-                          ~ as_date(., format = '%Y-%m-%d')))
+            mutate(across(c(AdmissionDt, DischargeDt),
+                          ~ as_date(., format = '%Y-%m-%d'))) %>%
+            mutate(
+                visit_duration = DischargeDt - AdmissionDt
+            )
     }
     patient_data <- patient_data %>%
         select(BeneID, DOB, DOD) %>%
@@ -139,7 +182,8 @@ inpatient_visits <- augment_visit_data(data_frames$train_inpatient,
 outpatient_visits <- augment_visit_data(data_frames$train_outpatient,
                                         data_frames$train_beneficiary,
                                         visit_type = 'outpatient')
-inpatient_only_columns <- c('AdmissionDt', 'DischargeDt', 'DiagnosisGroupCode')
+inpatient_only_columns <- c('AdmissionDt', 'DischargeDt',
+                            'DiagnosisGroupCode', 'visit_duration')
 patient_visits <- rbind(
     select(inpatient_visits, -all_of(inpatient_only_columns)),
     outpatient_visits,
@@ -263,8 +307,66 @@ out_doctors <- get_doctor_data(
     'outpatient'
 )
 doctors <- rbind(in_doctors, out_doctors,
-                              make.row.names = FALSE)
+                 make.row.names = FALSE)
 
+get_provider_data <- function(visit_data, visit_type) {
+    provider_data <- visit_data %>%
+        mutate(
+            ClaimStartDt = as_date(ClaimStartDt, format = '%Y-%m-%d')
+        ) %>%
+        mutate(claim_year = year(ClaimStartDt),
+               claim_month = month(ClaimStartDt, label = TRUE, abbr = TRUE)) %>%
+        group_by(Provider, claim_year, claim_month) %>%
+        summarise(claim_count = n(), .groups = 'drop') %>%
+        mutate(type = visit_type)
+    return(provider_data)
+}
+
+in_providers <- get_provider_data(
+    data_frames$train_inpatient,
+    'inpatient'
+)
+out_providers <- get_provider_data(
+    data_frames$train_outpatient,
+    'outpatient'
+)
+providers <- rbind(in_providers, out_providers,
+                   make.row.names = FALSE)
+
+code_descriptions <- c(
+    'Chest pain', 'Shortness of breath', 'Pneumonia',
+    'Congestive heart failure', 'Syncope (fainting)', 'Mammogram',
+    'Irregular heartbeat', 'High blood pressure', 'Diabetes',
+    'Prescription monitoring'
+)
+names(code_descriptions) <- c(
+    '78650', '78605', '486', '4280', '7802',
+    'V7612', '42731', '4019', '25000', 'V5883'
+)
+find_frequent_codes <- function(visit_data, visit_type) {
+    frequent_codes <- visit_data %>%
+        mutate(code = ClmAdmitDiagnosisCode) %>%
+        group_by(code) %>%
+        summarise(count = n(), .groups = 'drop') %>%
+        drop_na() %>%
+        arrange(desc(count)) %>%
+        head(n = 5) %>%
+        mutate(description = code_descriptions[code], type = visit_type)
+    return(frequent_codes)
+}
+freq_admit_codes_inpatient <- find_frequent_codes(
+    data_frames$train_inpatient,
+    'inpatient'
+)
+freq_admit_codes_outpatient <- find_frequent_codes(
+    data_frames$train_outpatient,
+    'outpatient'
+)
+freq_admit_codes <- rbind(
+    freq_admit_codes_inpatient,
+    freq_admit_codes_outpatient,
+    make.row.names = FALSE
+)
 ```
 
 ```{r, questions-1a, cache=TRUE}
@@ -295,9 +397,11 @@ chronic_condition_labels <- case_when(
     str_detect(chronic_conditions, 'Alzheimer') ~ 'Alzheimer\'s disease',
     str_detect(chronic_conditions, 'HeartFailure') ~ 'heart failure',
     str_detect(chronic_conditions, 'KidneyDisease') ~ 'kidney disease',
-    str_detect(chronic_conditions, 'ObstrPulmonary') ~ 'obstructive\npulmonary\ndisease',
     str_detect(chronic_conditions, 'IschemicHeart') ~ 'ischemic heart',
-    str_detect(chronic_conditions, 'RheumatoidArthritis') ~ 'rheumatoid arthritis',
+    str_detect(chronic_conditions,
+               'ObstrPulmonary') ~ 'obstructive\npulmonary\ndisease',
+    str_detect(chronic_conditions,
+               'RheumatoidArthritis') ~ 'rheumatoid arthritis',
     TRUE ~ tolower(chronic_conditions)
 )
 names(chronic_condition_labels) <- chronic_conditions
@@ -517,7 +621,7 @@ for (column_name in chronic_conditions) {
 
 <div class="code-block">
 
-```{r, questions-2b, cache=FALSE}
+```{r, questions-2b, cache=TRUE}
 for (visit_type in visit_types) {
     to_plot <- patients %>%
         filter(type == visit_type) %>%
@@ -545,7 +649,7 @@ for (visit_type in visit_types) {
 
 <div class="code-block">
 
-```{r, payments, cache=FALSE}
+```{r, payments, cache=TRUE}
 payment_colnames <- c('total_reimbursed', 'reimbursed_per_visit',
                       'total_charged', 'charged_per_visit')
 payment_labels <- c(
@@ -555,6 +659,16 @@ payment_labels <- c(
     'Mean paid to hospital per patient per visit'
 )
 names(payment_labels) <- payment_colnames
+
+generate_condition_column <- function(data) {
+    data <- pivot_longer(data, all_of(chronic_conditions),
+                         names_to = 'condition', values_to = 'value') %>%
+        filter(value == 'Y') %>%
+        select(-value) %>%
+        # Modify the conditions names to improve plot readability.
+        mutate(condition = convert_to_labels(condition))
+    return(data)
+}
 
 for (visit_type in visit_types) {
     to_select <- c(payment_colnames, chronic_conditions)
@@ -567,12 +681,7 @@ for (visit_type in visit_types) {
         # A logarithmic scale will be used so 0 is replaced by 1.
         mutate(across(all_of(payment_colnames),
                       ~ replace(., (.) == 0, 1))) %>%
-        pivot_longer(all_of(chronic_conditions), names_to = 'condition',
-                     values_to = 'value') %>%
-        filter(value == 'Y') %>%
-        select(-value) %>%
-        # Modify the conditions names to improve plot readability.
-        mutate(condition = convert_to_labels(condition))
+        generate_condition_column()
     for (column_name in payment_colnames) {
         title <- str_c(payment_labels[column_name], ', ', visit_type, 's')
         fig <- ggplot(to_plot, aes_string(x = 'condition', y = column_name)) +
@@ -586,6 +695,292 @@ for (visit_type in visit_types) {
         print(fig)
     }
 }
+```
+
+</div>
+
+## Questions 3 {.tabset}
+
+### Questions {.unnumbered}
+
+Based on the attribute **ClaimStartDt**, analyze the weekly service volume
+variations.
+
+What are the weekly patterns (weekly seasonalities) you observe for the
+demands on **inpatient** or **outpatient** services?
+
+Identify the top $5$ most frequent **ClmAdmitDiagnosisCodes** and trace their
+weekly seasonalities.  Display the patterns you find.
+
+For the inpatient patients, is there any pattern between the durations of the
+treatments and the patient attributes?
+
+For the monthly inpatient/outpatient claim counts of all the providers, please
+analyze the table of provider-month matrices and report any interesting
+findings.
+
+**hint**: dataframe's pivot_table method could be used to construct the
+provider-month matrix.
+
+### Answers {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, questions-3a, cache=TRUE}
+# From the plots of inpatient visits, it appears that the first and last weekly
+# dates with complete data may be 2008-12-29, 2009-12-21, respectively.
+#
+# For the outpatient data, possibly 2009-01-05, 2009-12-21.
+#
+# Outside of these ranges, it's possible that the data is incomplete, so show
+# weekly "seasonality" only in these ranges.
+valid_date_ranges <- list(
+    inpatient = as_date(c('2008-12-29', '2009-12-27'),
+                        format = '%Y-%m-%d'),
+    outpatient = as_date(c('2009-01-05', '2009-12-27'),
+                         format = '%Y-%m-%d')
+)
+
+for (visit_type in visit_types) {
+    to_plot <- patient_visits %>%
+        filter(type == visit_type) %>%
+        group_by(week_date) %>%
+        summarise(count = n(), .groups = 'drop')
+
+    title <- str_c('Weekly visit count, ', visit_type, 's')
+    fig <- ggplot(to_plot, aes(x = week_date, y = count)) +
+        geom_point(color = 'navyblue') +
+        geom_line(color = 'navyblue') +
+        xlab('Date') +
+        ylab('Number of visits') +
+        ggtitle(title)
+    print(fig)
+}
+
+extract_series_data <- function(visit_data, date_range) {
+    series_data <-  visit_data %>%
+        group_by(ClaimStartDt) %>%
+        summarise(count = n(), .groups = 'drop') %>%
+        # The full join guarantees that there are no missing days in the
+        # time-series data.  This is needed for seasonal analysis.
+        full_join(claim_dates$daily, by = 'ClaimStartDt') %>%
+        replace_na(replace = list(count = 0)) %>%
+        filter(ClaimStartDt >= date_range[1],
+               ClaimStartDt <= date_range[2]) %>%
+        arrange(ClaimStartDt)
+    return(series_data)
+}
+
+plot_series <- function(to_plot, title) {
+    fig <- ggplot(to_plot, aes(x = ClaimStartDt, y = count)) +
+        geom_point(color = 'navyblue') +
+        geom_line(color = 'navyblue') +
+        xlab('Date') +
+        ylab('Number of visits') +
+        ggtitle(title)
+    return(fig)
+}
+
+get_stl_model <- function(series_data) {
+    stl_model <- stlplus(series_data$count, t = series_data$ClaimStartDt,
+                         s.window = 'periodic', n.p = 7,
+                         t.window = 29)
+    return(stl_model)
+}
+
+plot_seasonality <- function(series_data, stl_model, title) {
+    seasonality <- seasonal(stl_model)[1:7]
+    weekday <- wday(series_data$ClaimStartDt[1:7], label = TRUE)
+    seasonality_data <- data.frame(weekday = weekday,
+                                   seasonality = seasonality)
+
+    fig <- ggplot(seasonality_data,
+                  aes(x = weekday, y = seasonality, group = 1)) +
+        geom_line(color = 'navyblue') +
+        geom_point(color = 'navyblue') +
+        xlab('Weekday') +
+        ylab('Number of visits') +
+        ggtitle(title)
+
+    return(fig)
+}
+
+for (visit_type in visit_types) {
+    date_range <- valid_date_ranges[[visit_type]]
+    to_plot <- patient_visits %>%
+        filter(type == visit_type) %>%
+        extract_series_data(date_range)
+
+    title <- str_c('Daily visit count, ', visit_type, 's')
+    fig <- plot_series(to_plot, title)
+    print(fig)
+
+    stl_model <- get_stl_model(to_plot)
+    title <- str_c(
+        'Decomposition of daily-visit time series, ', visit_type, 's'
+    )
+    print(plot(stl_model, main = title))
+
+    title <- str_c('Weekly seasonality in visit count, ', visit_type, 's')
+    fig <- plot_seasonality(to_plot, stl_model, title)
+    print(fig)
+
+    trend_curve <- trend(stl_model)
+    trend_data <- data.frame(date = to_plot$ClaimStartDt, trend = trend_curve)
+    title <- str_c('Trend in visit count, ', visit_type, 's')
+    fig <- ggplot(trend_data,
+                  aes(x = date, y = trend)) +
+        geom_line(color = 'navyblue') +
+        xlab('Date') +
+        ylab('Number of visits') +
+        ggtitle(title)
+    print(fig)
+}
+```
+
+</div>
+
+### Reason for visit {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, codes, cache=TRUE}
+for (visit_type in visit_types) {
+    to_plot <- freq_admit_codes %>%
+        filter(type == visit_type) %>%
+        arrange(desc(count)) %>%
+        mutate(description = reorder(description, count))
+
+    title <- str_c('Top reasons for hospital visit, ', visit_type, 's')
+    fig <- ggplot(to_plot,
+                  aes(x = description, y = count, fill = description)) +
+        geom_col() +
+        xlab('Reason for visit') +
+        ylab('Number of visits') +
+        coord_flip() +
+        guides(fill = FALSE) +
+        ggtitle(title)
+    print(fig)
+}
+
+for (visit_type in visit_types) {
+    date_range <- valid_date_ranges[[visit_type]]
+    frequent_codes <- freq_admit_codes %>%
+        filter(type == visit_type) %>%
+        arrange(desc(count))
+    visit_data <- patient_visits %>%
+        filter(type == visit_type,
+               ClmAdmitDiagnosisCode %in% frequent_codes$code)
+
+    for (admit_code in frequent_codes$code) {
+        description <- code_descriptions[admit_code]
+        series_data <- visit_data %>%
+            filter(ClmAdmitDiagnosisCode == admit_code) %>%
+            extract_series_data(date_range)
+
+        title <- str_c('Daily visit count for ', tolower(description), ', ',
+                       visit_type, 's')
+        fig <- plot_series(series_data, title)
+        print(fig)
+
+        stl_model <- get_stl_model(series_data)
+
+        title <- str_c('Weekly seasonality for ', tolower(description), ', ',
+                       visit_type, 's')
+        fig <- plot_seasonality(series_data, stl_model, title)
+        print(fig)
+    }
+}
+```
+
+</div>
+
+### Visit duration {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, duration, cache=TRUE}
+fig <- ggplot(inpatient_visits, aes(x = age, y = visit_duration)) +
+    geom_point(color = 'navyblue') +
+    scale_x_continuous('Age') +
+    scale_y_continuous('Visit duration') +
+    ggtitle('Dependence of visit duration on patient age')
+print(fig)
+
+to_plot <- inpatient_visits %>%
+    select(BeneID, visit_duration) %>%
+    left_join(
+        select(inpatients, BeneID, all_of(chronic_conditions)),
+        by = 'BeneID'
+    ) %>%
+    mutate(across(all_of(chronic_conditions), ~ (.) == 'Y'))
+to_plot$number_of_conditions <- factor(rowSums(to_plot[, chronic_conditions]))
+fig <- ggplot(to_plot, aes(x = number_of_conditions, y = visit_duration)) +
+    geom_boxplot(aes(fill = number_of_conditions)) +
+    xlab('Number of chronic conditions') +
+    scale_y_continuous('Visit duration') +
+    guides(fill = FALSE) +
+    ggtitle('Dependence of visit duration on number of chronic conditions')
+print(fig)
+```
+
+</div>
+
+### Provider claim counts {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, show-claim-counts, ref.label='claim-counts', eval=FALSE}
+```
+
+```{r, claim-counts, cache=TRUE, echo=FALSE}
+plot_claim_counts <- function(visit_type) {
+    plot_data <- providers %>%
+        filter(type == visit_type, claim_year == 2009)
+
+    to_plot <- plot_data %>%
+        group_by(Provider) %>%
+        summarise(count = sum(claim_count), .groups = 'drop')
+    title <- str_c('Number of claims per provider in 2009, ', visit_type, 's')
+    fig <- ggplot(to_plot, aes(x = count)) +
+        geom_histogram(fill = 'navyblue', bins = 50) +
+        xlab('Number of claims') +
+        ylab('Number of providers') +
+        ggtitle(title)
+    print(fig)
+
+    cat('The maximum number of ', visit_type, ' claims for a provider is ',
+        max(to_plot$count), '.\n', sep = '')
+
+    to_plot <- plot_data %>%
+        group_by(claim_month) %>%
+        summarise(count = sum(claim_count), .groups = 'drop')
+    title <- str_c('Number of claims per month in 2009, ', visit_type, 's')
+    fig <- ggplot(to_plot,
+                  aes(x = claim_month, y = count)) +
+        geom_col(fill = 'navyblue') +
+        xlab('Month') +
+        ylab('Number of claims') +
+        ggtitle(title)
+    print(fig)
+
+    to_display <- plot_data %>%
+        group_by(claim_month) %>%
+        summarise(max_claims = max(claim_count), .groups = 'drop')
+    table_alignment <- list(className = 'dt-center', targets = '_all')
+    return(datatable(
+        to_display,
+        rownames = FALSE,
+        colnames = c('Month', str_c('Max ', visit_type, ' claims per provider')),
+        options = list(
+            dom = 't',
+            columnDefs = list(table_alignment),
+            pageLength = 12
+        )
+    ))
+}
+plot_claim_counts('inpatient')
+plot_claim_counts('outpatient')
 ```
 
 </div>
