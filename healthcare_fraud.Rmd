@@ -26,14 +26,10 @@ library(forcats)
 library(ggplot2)
 library(lubridate)
 library(purrr)
-library(reticulate)
 library(scales)
 library(stlplus)
 library(stringr)
 library(tidyr)
-
-# Use the conda environment 'fraud' created for the project.
-use_condaenv(condaenv = 'fraud')
 ```
 
 ## Questions 1 {.tabset}
