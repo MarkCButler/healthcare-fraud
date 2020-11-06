@@ -28,6 +28,15 @@ library(scales)
 library(stlplus)
 library(stringr)
 library(tidyr)
+
+# With default settings, plots appear crowded, so insert additional space
+# below each plot.  This can be done by editing plot.margin in the theme
+# system.  The default margin can be found using the command:
+#
+# theme_get()$plot.margin
+#
+# This gives 5.5 for each side.  Increase the bottom margin.
+theme_update(plot.margin = margin(5.5, 5.5, 20, 5.5, 'pt'))
 ```
 
 ## Questions 1 {.tabset}
@@ -64,7 +73,7 @@ Summarize your finding.
 
 <div class="code-block">
 
-```{r, data-frames, cache=TRUE}
+```{r, data-frames, message=FALSE, cache=TRUE}
 source('data_frames.R')
 ```
 
@@ -369,6 +378,24 @@ generate_condition_column <- function(data) {
     return(data)
 }
 
+# Function log_scale_dollar is used to avoid repeated verbose calls involving
+# the pseudo_log_trans function of the scales package.
+log_scale_dollar <- function(axis_label, axis) {
+    trans <- pseudo_log_trans(base = 10)
+    breaks <- c(0, 10, 100, 1e3, 1e4, 1e5)
+    if (axis == 'x') {
+        return(
+            scale_x_continuous(axis_label, trans = trans, breaks = breaks,
+                               labels = label_dollar(largest_with_cents = -1))
+        )
+    } else if (axis == 'y') {
+        scale_y_continuous(axis_label, trans = trans, breaks = breaks,
+                           labels = label_dollar(largest_with_cents = -1))
+    } else {
+        stop('Argument "axis" must be "x" or "y".')
+    }
+}
+
 for (visit_type in visit_types) {
     to_select <- c(payment_colnames, chronic_conditions)
     to_plot <- patients %>%
@@ -377,16 +404,12 @@ for (visit_type in visit_types) {
         # Patients for which the only visit has visit_cost == 0 show up with
         # missing values for the columns in payment_colnames.
         drop_na() %>%
-        # A logarithmic scale will be used so 0 is replaced by 1.
-        mutate(across(all_of(payment_colnames),
-                      ~ replace(., (.) == 0, 1))) %>%
         generate_condition_column()
     for (column_name in payment_colnames) {
         title <- str_c(payment_labels[column_name], ', ', visit_type, 's')
         fig <- ggplot(to_plot, aes_string(x = 'condition', y = column_name)) +
             geom_boxplot(aes(fill = condition)) +
-            scale_y_continuous('Payment amount', trans = 'log10',
-                               labels = label_dollar()) +
+            log_scale_dollar(axis_label = 'Payment amount', axis = 'y') +
             xlab('Chronic condition') +
             coord_flip() +
             guides(fill = FALSE) +
@@ -634,7 +657,7 @@ print(fig)
 
 ```{r, claim-counts, cache=TRUE, echo=FALSE}
 plot_claim_counts <- function(visit_type) {
-    plot_data <- providers %>%
+    plot_data <- claim_counts %>%
         filter(type == visit_type, claim_year == 2009)
 
     to_plot <- plot_data %>%
@@ -644,7 +667,7 @@ plot_claim_counts <- function(visit_type) {
     fig <- ggplot(to_plot, aes(x = count)) +
         geom_histogram(fill = 'navyblue', bins = 50) +
         xlab('Number of claims') +
-        ylab('Number of providers') +
+        ylab('Number of claim_counts') +
         ggtitle(title)
     print(fig)
 
@@ -680,6 +703,135 @@ plot_claim_counts <- function(visit_type) {
 }
 plot_claim_counts('inpatient')
 plot_claim_counts('outpatient')
+```
+
+</div>
+
+## Questions 4 {.tabset}
+
+### Questions {.unnumbered}
+
+Study the distributions of **InscClaimAmtReimbursed**, **DeductibleAmtPaid**
+for both inpatient and outpatient services. Your team might want to work with
+hist, scatter or sns.pairplot, distplot, etc.
+
+Study the distributions of insurance covered percentages
+**InscClaimAmtReimbursed/(InscClaimAmtReimbursed+DeductibleAmtPaid)**.
+
+Study the distributions of the durations of average insurance claims
+(end-start) of the providers?  Box-plot/violin-plot based on the
+**PotentialFraud** flag. Do you find any differences for none-potential fraud
+vs potential-fraud providers?
+
+How are the service durations related to the total claim amounts, i.e.
+InscClaimAmtReimbursed+DeductibleAmtPaid?
+
+Consider mean daily total charges (i.e. total charge/duration), please
+describe their distribution.  How do the **Potential Fraud** flag affect the
+distribution patterns?
+
+### Answers {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, questions-4a, cache=TRUE}
+plot_payment_distribution <- function(data, variable, title) {
+    fig <- ggplot(data, aes(x = {{variable}})) +
+        geom_histogram(fill = 'navyblue', bins = 30) +
+        log_scale_dollar('Payment amount', 'x') +
+        scale_y_continuous('Number of visits', labels = label_comma()) +
+        ggtitle(title)
+    return(fig)
+}
+
+for (visit_type in visit_types) {
+    to_plot <- patient_visits %>%
+        filter(type == visit_type) %>%
+        select(visit_cost, InscClaimAmtReimbursed, DeductibleAmtPaid) %>%
+        filter(visit_cost != 0) %>%
+        mutate(percent_covered = InscClaimAmtReimbursed / visit_cost)
+
+    title <- str_c('Insurer payments, ', visit_type, ' visits')
+    fig <- plot_payment_distribution(to_plot, InscClaimAmtReimbursed, title)
+    print(fig)
+
+    title <- str_c('Deductible, ', visit_type, ' visits')
+    fig <- plot_payment_distribution(to_plot, DeductibleAmtPaid, title)
+    print(fig)
+
+    title <- str_c('Insurer payment vs deductible, ', visit_type, ' visits')
+    fig <- ggplot(to_plot,
+                  aes(x = DeductibleAmtPaid, y = InscClaimAmtReimbursed)) +
+        geom_point(color = 'navyblue') +
+        log_scale_dollar('Deductible', 'x') +
+        log_scale_dollar('Payment by insurer', 'y') +
+        ggtitle(title)
+    print(fig)
+
+    title <- str_c('Percent covered by insurer, ', visit_type, ' visits')
+    fig <- ggplot(to_plot, aes(percent_covered)) +
+        geom_histogram(fill = 'navyblue', bins = 30) +
+        scale_x_continuous('Percent covered by insurer',
+                           labels = percent_format()) +
+        scale_y_continuous('Number of visits', labels = label_comma()) +
+        ggtitle(title)
+    print(fig)
+}
+```
+
+</div>
+
+### Claim durations {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, claim-duration, cache=TRUE}
+for (visit_type in visit_types) {
+    to_plot <- claim_durations %>%
+        filter(type == visit_type)
+
+    title <- str_c('Mean claim duration by provider, ', visit_type, ' visits')
+    fig <- ggplot(to_plot, aes(x = PotentialFraud, y = mean_claim_duration)) +
+        geom_boxplot(aes(fill = PotentialFraud)) +
+        scale_y_continuous('Mean claim duration (days)') +
+        xlab('Provider flagged for potential fraud') +
+        guides(fill = FALSE) +
+        ggtitle(title)
+    print(fig)
+}
+
+for (visit_type in visit_types) {
+    to_plot <- patient_visits %>%
+        filter(type == visit_type, visit_cost != 0) %>%
+        select(Provider, PotentialFraud, visit_cost, claim_duration) %>%
+        mutate(claim_cost_per_day = visit_cost / as.numeric(claim_duration + 1))
+
+    title <- str_c('Claim amount vs claim duration, ', visit_type, ' visits')
+    fig <- ggplot(to_plot, aes(x = claim_duration, y = visit_cost)) +
+        geom_point(aes(color = PotentialFraud)) +
+        scale_x_continuous('Claim duration (days)') +
+        scale_y_continuous('Claim amount', labels = label_dollar()) +
+        scale_color_discrete('Potential fraud') +
+        ggtitle(title)
+    print(fig)
+
+    legend_title <- 'Potential fraud'
+    fig <- to_plot %>%
+        ggplot(aes(x = claim_cost_per_day)) +
+        geom_histogram(
+            aes(fill = PotentialFraud), position = 'identity',
+            bins = 40, alpha = 0.15
+        ) +
+        geom_freqpoly(
+            aes(color = PotentialFraud), position = 'identity',
+            bins = 40, size = 0.7
+        ) +
+        ylab('Number of claims') +
+        log_scale_dollar('Cost per day', 'x') +
+        labs(fill = legend_title, color = legend_title) +
+        ggtitle(title)
+    print(fig)
+}
 ```
 
 </div>

@@ -106,12 +106,16 @@ claim_dates <- get_claim_dates(
 # The function uses dplyr operations to add columns to the argument
 # visit_data, which is then returned.
 #
-augment_visit_data <- function(visit_data, patient_data, visit_type) {
+augment_visit_data <- function(visit_data, patient_data, visit_type,
+                               add_fraud_flag = TRUE) {
     visit_counts <- get_visit_counts(visit_data)
     visit_data <- visit_data %>%
         mutate(type = visit_type) %>%
+        replace_na(list(DeductibleAmtPaid = 0)) %>%
+        mutate(visit_cost = InscClaimAmtReimbursed + DeductibleAmtPaid) %>%
         mutate(across(c(ClaimStartDt, ClaimEndDt),
                       ~ as_date(., format = '%Y-%m-%d'))) %>%
+        mutate(claim_duration = ClaimEndDt - ClaimStartDt) %>%
         mutate(year = isoyear(ClaimStartDt),
                week = isoweek(ClaimStartDt)) %>%
         left_join(claim_dates$weekly, by = c('year', 'week')) %>%
@@ -121,9 +125,7 @@ augment_visit_data <- function(visit_data, patient_data, visit_type) {
         visit_data <- visit_data %>%
             mutate(across(c(AdmissionDt, DischargeDt),
                           ~ as_date(., format = '%Y-%m-%d'))) %>%
-            mutate(
-                visit_duration = DischargeDt - AdmissionDt
-            )
+            mutate(visit_duration = DischargeDt - AdmissionDt)
     }
     patient_data <- patient_data %>%
         select(BeneID, DOB, DOD) %>%
@@ -131,6 +133,10 @@ augment_visit_data <- function(visit_data, patient_data, visit_type) {
                       ~ as_date(., format = '%Y-%m-%d')))
     visit_data <- left_join(visit_data, patient_data, by = 'BeneID') %>%
         mutate(age = (ClaimStartDt - DOB) / 365.24)
+    if (add_fraud_flag) {
+        visit_data <- left_join(visit_data, data_frames$train_provider,
+                                by = 'Provider')
+    }
 
     return(visit_data)
 }
@@ -305,8 +311,13 @@ doctors <- rbind(in_doctors, out_doctors,
 
 
 #############################################################################
-# Generate a data frame of provider information, i.e., with providers as
-# observations.
+# Generate two data frames of provider information.  One of these data frames
+# gives information about monthly number of claims per provider, and the other
+# gives information about mean claim duration per provider.
+#
+# These data frames are kept separate for the first, a unique row id would
+# consist of (provider, year, month, visit_type), while for the second, the
+# (provider, visit_type) is a unique row id.
 #############################################################################
 
 # Arguments:
@@ -314,11 +325,12 @@ doctors <- rbind(in_doctors, out_doctors,
 #   visit_data:  a data frame with rows that specify visits to a hospital
 #   visit_type:  either 'inpatient' or 'outpatient'
 #
-# The function uses dplyr operations to extract information about providers
-# and generate a data frame with providers as observations.
+# The function uses dplyr operations to extract information about monthly
+# claim counts per provider
 #
-get_provider_data <- function(visit_data, visit_type) {
-    provider_data <- visit_data %>%
+get_claim_counts <- function(visit_data, visit_type,
+                             add_fraud_flag = TRUE) {
+    claim_counts <- visit_data %>%
         mutate(
             ClaimStartDt = as_date(ClaimStartDt, format = '%Y-%m-%d')
         ) %>%
@@ -327,19 +339,60 @@ get_provider_data <- function(visit_data, visit_type) {
         group_by(Provider, claim_year, claim_month) %>%
         summarise(claim_count = n(), .groups = 'drop') %>%
         mutate(type = visit_type)
-    return(provider_data)
+    if (add_fraud_flag) {
+        claim_counts <- left_join(claim_counts, data_frames$train_provider,
+                                by = 'Provider')
+    }
+    return(claim_counts)
 }
 
-in_providers <- get_provider_data(
+in_claim_counts <- get_claim_counts(
     data_frames$train_inpatient,
     'inpatient'
 )
-out_providers <- get_provider_data(
+out_claim_counts <- get_claim_counts(
     data_frames$train_outpatient,
     'outpatient'
 )
-providers <- rbind(in_providers, out_providers,
-                   make.row.names = FALSE)
+claim_counts <- rbind(in_claim_counts, out_claim_counts,
+                      make.row.names = FALSE)
+
+# Arguments:
+#
+#   visit_data:  a data frame with rows that specify visits to a hospital
+#   visit_type:  either 'inpatient' or 'outpatient'
+#
+# The function uses dplyr operations to extract information about mean claim
+# durations per provider
+#
+get_claim_durations <- function(visit_data, visit_type,
+                                add_fraud_flag = TRUE) {
+    claim_durations <- visit_data %>%
+        mutate(across(c(ClaimStartDt, ClaimEndDt),
+                      ~ as_date(., format = '%Y-%m-%d'))) %>%
+        mutate(claim_duration = ClaimEndDt - ClaimStartDt) %>%
+        group_by(Provider) %>%
+        summarise(mean_claim_duration = mean(claim_duration),
+                  .groups = 'drop') %>%
+        mutate(type = visit_type)
+    if (add_fraud_flag) {
+        claim_durations <- left_join(
+            claim_durations, data_frames$train_provider, by = 'Provider'
+        )
+    }
+    return(claim_durations)
+}
+
+in_claim_durations <- get_claim_durations(
+    data_frames$train_inpatient,
+    'inpatient'
+)
+out_claim_durations <- get_claim_durations(
+    data_frames$train_outpatient,
+    'outpatient'
+)
+claim_durations <- rbind(in_claim_durations, out_claim_durations,
+                         make.row.names = FALSE)
 
 
 #############################################################################
