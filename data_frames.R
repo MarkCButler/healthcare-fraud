@@ -8,6 +8,11 @@ library(purrr)
 library(stringr)
 library(tidyr)
 
+
+#############################################################################
+# Load data from csv files.
+#############################################################################
+
 data_filenames <- list(
     train_outpatient = 'data/Train_Outpatientdata-1542865627584.csv',
     train_inpatient = 'data/Train_Inpatientdata-1542865627584.csv',
@@ -39,9 +44,16 @@ get_na_counts <- function(data) {
     return(na_counts)
 }
 
+
+#############################################################################
+# Characterize missing values.
+#############################################################################
+
 na_counts <- map(data_frames,
                  get_na_counts)
 
+# The column BeneId uniquely identifies patients, so group by BeneId allows a
+# calculation of the number of visits per patient.
 get_visit_counts <- function(visit_data) {
     visit_counts <- visit_data %>%
         group_by(BeneID) %>%
@@ -49,6 +61,10 @@ get_visit_counts <- function(visit_data) {
     return(visit_counts)
 }
 
+
+#############################################################################
+# Add columns to a data frame of hospital visits.
+#############################################################################
 
 # For time-series analysis, we want dates binned into weekly periods.  In
 # order to facilite time-series analysis, generate a data frame of dates
@@ -81,6 +97,15 @@ claim_dates <- get_claim_dates(
     data_frames$train_inpatient, data_frames$train_outpatient
 )
 
+# Arguments:
+#
+#   visit_data:  a data frame with rows that specify visits to a hospital
+#   patient_data:  a data frame with rows giving information about patients
+#   visit_type:  either 'inpatient' or 'outpatient'
+#
+# The function uses dplyr operations to add columns to the argument
+# visit_data, which is then returned.
+#
 augment_visit_data <- function(visit_data, patient_data, visit_type) {
     visit_counts <- get_visit_counts(visit_data)
     visit_data <- visit_data %>%
@@ -124,14 +149,13 @@ patient_visits <- rbind(
     make.row.names = FALSE
 )
 
-chronic_conditions_raw <- c(
-    'ChronicCond_Alzheimer', 'ChronicCond_Heartfailure',
-    'ChronicCond_KidneyDisease', 'ChronicCond_Cancer',
-    'ChronicCond_ObstrPulmonary', 'ChronicCond_Depression',
-    'ChronicCond_Diabetes', 'ChronicCond_IschemicHeart',
-    'ChronicCond_Osteoporasis', 'ChronicCond_rheumatoidarthritis',
-    'ChronicCond_stroke'
-)
+
+#############################################################################
+# Add columns to a data frame of hospital patients.
+#############################################################################
+
+# Clean up column names for chronic conditions, e.g., replace
+# ChronicCond_rheumatoidarthritis by RheumatoidArthritis
 clean_condition_names <- function(column_names) {
     new_names <- str_replace(column_names, '^ChronicCond_', '')
     new_names <- case_when(
@@ -143,13 +167,34 @@ clean_condition_names <- function(column_names) {
     )
     return(new_names)
 }
+
+chronic_conditions_raw <- c(
+    'ChronicCond_Alzheimer', 'ChronicCond_Heartfailure',
+    'ChronicCond_KidneyDisease', 'ChronicCond_Cancer',
+    'ChronicCond_ObstrPulmonary', 'ChronicCond_Depression',
+    'ChronicCond_Diabetes', 'ChronicCond_IschemicHeart',
+    'ChronicCond_Osteoporasis', 'ChronicCond_rheumatoidarthritis',
+    'ChronicCond_stroke'
+)
 chronic_conditions <- clean_condition_names(chronic_conditions_raw)
 
+# For each patient, calculate the median age of that patient during the
+# hospital visits in the data set.  (The visits occurred within roughly a
+# year-long period.)
 patient_ages <- patient_visits %>%
     select(BeneID, age) %>%
     group_by(BeneID) %>%
     summarise(age = median(age), .groups = 'drop')
 
+# Arguments:
+#
+#   patient_data:  a data frame with rows giving information about patients
+#   visit_data:  a data frame with rows that specify visits to a hospital
+#   visit_type:  either 'inpatient' or 'outpatient'
+#
+# The function uses dplyr operations to add columns to the argument
+# patient_data, which is then returned.
+#
 augment_patient_data <- function(patient_data, visit_data, visit_type) {
     patient_data <- patient_data %>%
         filter(BeneID %in% visit_data$BeneID) %>%
@@ -202,6 +247,7 @@ augment_patient_data <- function(patient_data, visit_data, visit_type) {
 
     return(patient_data)
 }
+
 inpatients <- augment_patient_data(
     data_frames$train_beneficiary,
     data_frames$train_inpatient,
@@ -215,9 +261,23 @@ outpatients <- augment_patient_data(
 patients <- rbind(inpatients, outpatients,
                   make.row.names = FALSE)
 
+
+#############################################################################
+# Generate a data frame of doctor information, i.e., with doctors as
+# observations.
+#############################################################################
+
 doctor_colnames <- c('AttendingPhysician', 'OperatingPhysician',
                      'OtherPhysician')
 
+# Arguments:
+#
+#   visit_data:  a data frame with rows that specify visits to a hospital
+#   visit_type:  either 'inpatient' or 'outpatient'
+#
+# The function uses dplyr operations to extract information about doctors and
+# generate a data frame with doctors as observations.
+#
 get_doctor_data <- function(visit_data, visit_type) {
     doctor_data <- visit_data %>%
         select(Provider, all_of(doctor_colnames)) %>%
@@ -243,6 +303,20 @@ out_doctors <- get_doctor_data(
 doctors <- rbind(in_doctors, out_doctors,
                  make.row.names = FALSE)
 
+
+#############################################################################
+# Generate a data frame of provider information, i.e., with providers as
+# observations.
+#############################################################################
+
+# Arguments:
+#
+#   visit_data:  a data frame with rows that specify visits to a hospital
+#   visit_type:  either 'inpatient' or 'outpatient'
+#
+# The function uses dplyr operations to extract information about providers
+# and generate a data frame with providers as observations.
+#
 get_provider_data <- function(visit_data, visit_type) {
     provider_data <- visit_data %>%
         mutate(
@@ -267,6 +341,12 @@ out_providers <- get_provider_data(
 providers <- rbind(in_providers, out_providers,
                    make.row.names = FALSE)
 
+
+#############################################################################
+# Generate a data frame that gives information about the diagnosis codes most
+# frequently used when a patient is admitted.
+#############################################################################
+
 code_descriptions <- c(
     'Chest pain', 'Shortness of breath', 'Pneumonia',
     'Congestive heart failure', 'Syncope (fainting)', 'Mammogram',
@@ -277,6 +357,16 @@ names(code_descriptions) <- c(
     '78650', '78605', '486', '4280', '7802',
     'V7612', '42731', '4019', '25000', 'V5883'
 )
+
+# Arguments:
+#
+#   visit_data:  a data frame with rows that specify visits to a hospital
+#   visit_type:  either 'inpatient' or 'outpatient'
+#
+# The function uses dplyr operations to extract information about the most
+# frequency admission codes and generate a data frame with the frequent
+# admission codes as observations.
+#
 find_frequent_codes <- function(visit_data, visit_type) {
     frequent_codes <- visit_data %>%
         mutate(code = ClmAdmitDiagnosisCode) %>%
