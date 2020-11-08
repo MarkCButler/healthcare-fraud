@@ -8,6 +8,8 @@ library(purrr)
 library(stringr)
 library(tidyr)
 
+source('globals.R')
+
 
 #############################################################################
 # Load data from csv files.
@@ -159,30 +161,6 @@ patient_visits <- rbind(
 #############################################################################
 # Add columns to a data frame of hospital patients.
 #############################################################################
-
-# Clean up column names for chronic conditions, e.g., replace
-# ChronicCond_rheumatoidarthritis by RheumatoidArthritis
-clean_condition_names <- function(column_names) {
-    new_names <- str_replace(column_names, '^ChronicCond_', '')
-    new_names <- case_when(
-        str_detect(new_names, 'Heartfailure') ~ 'HeartFailure',
-        str_detect(new_names, 'Osteoporasis') ~ 'Osteoporosis',
-        str_detect(new_names, 'rheumatoidarthritis') ~ 'RheumatoidArthritis',
-        str_detect(new_names, 'stroke') ~ 'Stroke',
-        TRUE ~ new_names
-    )
-    return(new_names)
-}
-
-chronic_conditions_raw <- c(
-    'ChronicCond_Alzheimer', 'ChronicCond_Heartfailure',
-    'ChronicCond_KidneyDisease', 'ChronicCond_Cancer',
-    'ChronicCond_ObstrPulmonary', 'ChronicCond_Depression',
-    'ChronicCond_Diabetes', 'ChronicCond_IschemicHeart',
-    'ChronicCond_Osteoporasis', 'ChronicCond_rheumatoidarthritis',
-    'ChronicCond_stroke'
-)
-chronic_conditions <- clean_condition_names(chronic_conditions_raw)
 
 # For each patient, calculate the median age of that patient during the
 # hospital visits in the data set.  (The visits occurred within roughly a
@@ -399,17 +377,6 @@ claim_durations <- rbind(in_claim_durations, out_claim_durations,
 # Generate a data frame that gives information about the diagnosis codes most
 # frequently used when a patient is admitted.
 #############################################################################
-
-code_descriptions <- c(
-    'Chest pain', 'Shortness of breath', 'Pneumonia',
-    'Congestive heart failure', 'Syncope (fainting)', 'Mammogram',
-    'Irregular heartbeat', 'High blood pressure', 'Diabetes',
-    'Prescription monitoring'
-)
-names(code_descriptions) <- c(
-    '78650', '78605', '486', '4280', '7802',
-    'V7612', '42731', '4019', '25000', 'V5883'
-)
 
 # Arguments:
 #
