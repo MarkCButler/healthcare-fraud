@@ -77,8 +77,8 @@ log_scale_dollar <- function(axis_label, axis) {
 # Plot time-series, manipulate data for time-series plots.
 #############################################################################
 
-extract_series_data <- function(visit_data, date_range) {
-    series_data <-  visit_data %>%
+extract_series_data <- function(claim_data, date_range) {
+    series_data <-  claim_data %>%
         group_by(ClaimStartDt) %>%
         summarise(count = n(), .groups = 'drop') %>%
         # The full join guarantees that there are no missing days in the
@@ -126,7 +126,7 @@ plot_seasonality <- function(series_data, stl_model, title) {
 
 plot_claim_counts <- function(visit_type) {
     plot_data <- claim_counts %>%
-        filter(type == visit_type, claim_year == 2009)
+        filter(visit_type == !!visit_type, claim_year == 2009)
 
     to_plot <- plot_data %>%
         group_by(Provider) %>%

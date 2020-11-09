@@ -107,7 +107,7 @@ visit_types <- c('inpatient', 'outpatient')
 
 for (visit_type in visit_types) {
     to_plot <- patients %>%
-        filter(type == visit_type)
+        filter(visit_type == !!visit_type)
     x_axis_values <- seq(min(to_plot$visit_count),
                          max(to_plot$visit_count))
     title <- str_c('Number of visits made by ', visit_type, 's')
@@ -125,7 +125,7 @@ for (column_name in chronic_conditions) {
     condition_label <- str_replace_all(condition_label, '\n', ' ')
     title_base <- str_c('Distribution of ', condition_label)
 
-    fig <- ggplot(patients, aes_string(x = 'type', fill = column_name)) +
+    fig <- ggplot(patients, aes_string(x = 'visit_type', fill = column_name)) +
         geom_bar(position = 'fill') +
         scale_y_continuous('Fraction of patients') +
         scale_x_discrete(name = '') +
@@ -135,7 +135,7 @@ for (column_name in chronic_conditions) {
 
     for (visit_type in visit_types) {
         to_plot <- patients %>%
-            filter(type == visit_type)
+            filter(visit_type == !!visit_type)
         x_axis_values <- seq(min(to_plot$visit_count),
                              max(to_plot$visit_count))
         title <- str_c(title_base, ', ', visit_type, 's')
@@ -159,7 +159,8 @@ for (column_name in chronic_conditions) {
 <div class="code-block">
 
 ```{r, questions-1b, cache=TRUE}
-# How many distinct patients (BeneIDs) are there in the in/out-patient datasets?
+# How many distinct patients (BeneIDs) are there in the in/out-patient
+# datasets?
 inpatients_vec <- inpatients$BeneID %>% unique()
 length(inpatients_vec)
 outpatients_vec <- outpatients$BeneID %>% unique()
@@ -169,7 +170,7 @@ length(in_out_patients_vec)
 
 for (visit_type in visit_types) {
     to_plot <- doctors %>%
-        filter(type == visit_type)
+        filter(visit_type == !!visit_type)
     x_axis_values <- seq(min(to_plot$provider_count),
                          max(to_plot$provider_count))
     title <- str_c('Number of providers per doctor for ', visit_type, 's')
@@ -184,7 +185,7 @@ for (visit_type in visit_types) {
 
 for (visit_type in visit_types) {
     to_plot <- patients %>%
-        filter(type == visit_type)
+        filter(visit_type == !!visit_type)
     x_axis_values <- seq(min(to_plot$provider_count),
                          max(to_plot$provider_count))
     title <- str_c('Number of providers per patient for ', visit_type, 's')
@@ -197,8 +198,8 @@ for (visit_type in visit_types) {
     print(fig)
 }
 
-in_providers_vec <- unique(inpatient_visits$Provider)
-out_providers_vec <- unique(outpatient_visits$Provider)
+in_providers_vec <- unique(inpatient_claims$Provider)
+out_providers_vec <- unique(outpatient_claims$Provider)
 in_out_providers_vec <- intersect(in_providers_vec, out_providers_vec)
 length(in_providers_vec)
 length(out_providers_vec)
@@ -241,8 +242,8 @@ or the average charge per visit.
 
 ```{r, questions-2a, cache=TRUE}
 for (visit_type in visit_types) {
-    to_plot <- patient_visits %>%
-        filter(type == visit_type) %>%
+    to_plot <- claims %>%
+        filter(visit_type == !!visit_type) %>%
         mutate(age = as.integer(round(age)))
     title <- str_c('Number of visits by patient age, ', visit_type, 's')
     fig <- ggplot(to_plot, aes(x = age)) +
@@ -267,7 +268,7 @@ for (column_name in chronic_conditions) {
     condition_label <- str_replace_all(condition_label, '\n', ' ')
     for (visit_type in visit_types) {
         to_plot <- patients %>%
-            filter(type == visit_type) %>%
+            filter(visit_type == !!visit_type) %>%
             mutate(age = as.integer(round(age)))
 
         title <- str_c('Distribution of ', condition_label,
@@ -301,7 +302,7 @@ for (column_name in chronic_conditions) {
 ```{r, questions-2b, cache=TRUE}
 for (visit_type in visit_types) {
     to_plot <- patients %>%
-        filter(type == visit_type) %>%
+        filter(visit_type == !!visit_type) %>%
         select(all_of(chronic_conditions))
     to_plot_vec <- colSums(to_plot == 'Y')
     vec_labels <- convert_to_labels(names(to_plot_vec)) %>%
@@ -342,7 +343,7 @@ names(payment_labels) <- payment_colnames
 for (visit_type in visit_types) {
     to_select <- c(payment_colnames, chronic_conditions)
     to_plot <- patients %>%
-        filter(type == visit_type) %>%
+        filter(visit_type == !!visit_type) %>%
         select(all_of(to_select)) %>%
         # Patients for which the only visit has visit_cost == 0 show up with
         # missing values for the columns in payment_colnames.
@@ -407,8 +408,8 @@ valid_date_ranges <- list(
 )
 
 for (visit_type in visit_types) {
-    to_plot <- patient_visits %>%
-        filter(type == visit_type) %>%
+    to_plot <- claims %>%
+        filter(visit_type == !!visit_type) %>%
         group_by(week_date) %>%
         summarise(count = n(), .groups = 'drop')
 
@@ -431,8 +432,8 @@ get_stl_model <- function(series_data) {
 
 for (visit_type in visit_types) {
     date_range <- valid_date_ranges[[visit_type]]
-    to_plot <- patient_visits %>%
-        filter(type == visit_type) %>%
+    to_plot <- claims %>%
+        filter(visit_type == !!visit_type) %>%
         extract_series_data(date_range)
 
     title <- str_c('Daily visit count, ', visit_type, 's')
@@ -471,7 +472,7 @@ for (visit_type in visit_types) {
 ```{r, codes, cache=TRUE}
 for (visit_type in visit_types) {
     to_plot <- freq_admit_codes %>%
-        filter(type == visit_type) %>%
+        filter(visit_type == !!visit_type) %>%
         arrange(desc(count)) %>%
         mutate(description = reorder(description, count))
 
@@ -490,15 +491,15 @@ for (visit_type in visit_types) {
 for (visit_type in visit_types) {
     date_range <- valid_date_ranges[[visit_type]]
     frequent_codes <- freq_admit_codes %>%
-        filter(type == visit_type) %>%
+        filter(visit_type == !!visit_type) %>%
         arrange(desc(count))
-    visit_data <- patient_visits %>%
-        filter(type == visit_type,
+    claim_data <- claims %>%
+        filter(visit_type == !!visit_type,
                ClmAdmitDiagnosisCode %in% frequent_codes$code)
 
     for (admit_code in frequent_codes$code) {
         description <- code_descriptions[admit_code]
-        series_data <- visit_data %>%
+        series_data <- claim_data %>%
             filter(ClmAdmitDiagnosisCode == admit_code) %>%
             extract_series_data(date_range)
 
@@ -524,14 +525,14 @@ for (visit_type in visit_types) {
 <div class="code-block">
 
 ```{r, duration, cache=TRUE}
-fig <- ggplot(inpatient_visits, aes(x = age, y = visit_duration)) +
+fig <- ggplot(inpatient_claims, aes(x = age, y = visit_duration)) +
     geom_point(color = 'navyblue') +
     scale_x_continuous('Age') +
     scale_y_continuous('Visit duration') +
     ggtitle('Dependence of visit duration on patient age')
 print(fig)
 
-to_plot <- inpatient_visits %>%
+to_plot <- inpatient_claims %>%
     select(BeneID, visit_duration) %>%
     left_join(
         select(inpatients, BeneID, all_of(chronic_conditions)),
@@ -593,8 +594,8 @@ distribution patterns?
 
 ```{r, questions-4a, cache=TRUE}
 for (visit_type in visit_types) {
-    to_plot <- patient_visits %>%
-        filter(type == visit_type) %>%
+    to_plot <- claims %>%
+        filter(visit_type == !!visit_type) %>%
         select(visit_cost, InscClaimAmtReimbursed, DeductibleAmtPaid) %>%
         filter(visit_cost != 0) %>%
         mutate(percent_covered = InscClaimAmtReimbursed / visit_cost)
@@ -636,7 +637,7 @@ for (visit_type in visit_types) {
 ```{r, claim-duration, cache=TRUE}
 for (visit_type in visit_types) {
     to_plot <- claim_durations %>%
-        filter(type == visit_type)
+        filter(visit_type == !!visit_type)
 
     title <- str_c('Mean claim duration by provider, ', visit_type, ' visits')
     fig <- ggplot(to_plot, aes(x = PotentialFraud, y = mean_claim_duration)) +
@@ -649,10 +650,12 @@ for (visit_type in visit_types) {
 }
 
 for (visit_type in visit_types) {
-    to_plot <- patient_visits %>%
-        filter(type == visit_type, visit_cost != 0) %>%
+    to_plot <- claims %>%
+        filter(visit_type == !!visit_type, visit_cost != 0) %>%
         select(Provider, PotentialFraud, visit_cost, claim_duration) %>%
-        mutate(claim_cost_per_day = visit_cost / as.numeric(claim_duration + 1))
+        mutate(
+            claim_cost_per_day = visit_cost / as.numeric(claim_duration + 1)
+        )
 
     title <- str_c('Claim amount vs claim duration, ', visit_type, ' visits')
     fig <- ggplot(to_plot, aes(x = claim_duration, y = visit_cost)) +
