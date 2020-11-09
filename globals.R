@@ -40,3 +40,7 @@ names(code_descriptions) <- c(
     '78650', '78605', '486', '4280', '7802',
     'V7612', '42731', '4019', '25000', 'V5883'
 )
+
+# Names of columns that contain doctor id.
+doctor_colnames <- c('AttendingPhysician', 'OperatingPhysician',
+                     'OtherPhysician')

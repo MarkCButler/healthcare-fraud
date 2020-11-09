@@ -74,6 +74,59 @@ log_scale_dollar <- function(axis_label, axis) {
 
 
 #############################################################################
+# Plot a bar chart or histogram in two different formats:
+#
+# 1. Bars represents count and have a uniform color.
+#
+# 2. Bars have two colors based on the PotentialFraud flag and show percentage
+#    for each color (position = 'fill').
+#
+#############################################################################
+
+# Plot a bar chart in two formats
+plot_bar_charts <- function(fig_base, y_label) {
+    fig <- fig_base +
+        geom_bar(fill = 'navyblue') +
+        scale_y_continuous(str_c('Number of ', y_label),
+                           labels = label_comma())
+    print(fig)
+
+    fig <- fig_base +
+        geom_bar(aes(fill = PotentialFraud),
+                 position = 'fill') +
+        scale_y_continuous(str_c('Percentage of ', y_label),
+                           labels = label_percent()) +
+        scale_fill_discrete('Potential fraud')
+    print(fig)
+}
+
+# Plot a histogram in two formats.
+plot_histograms <- function(fig_base, y_label, bins,
+                            breaks = waiver()) {
+    fig <- fig_base +
+        geom_histogram(fill = 'navyblue', bins = bins) +
+        scale_y_continuous(str_c('Number of ', y_label),
+                           breaks = breaks,
+                           labels = label_comma())
+    print(fig)
+
+    fig <- fig_base +
+        geom_histogram(aes(fill = PotentialFraud),
+                       position = 'fill',
+                       bins = bins) +
+        scale_y_continuous(str_c('Percentage of ', y_label),
+                           labels = label_percent()) +
+        scale_fill_discrete('Potential fraud')
+    # A warning is issued here if the histogram has any bins with count zero.
+    # The warning comes from geom_bar, which is apparently called to handle
+    # the fill.  The fact that this spurious warning is issued could be viewed
+    # as a bug.  The warning can be eliminated from the markdown output with
+    # suppressWarnings.
+    suppressWarnings(print(fig))
+}
+
+
+#############################################################################
 # Plot time-series, manipulate data for time-series plots.
 #############################################################################
 

@@ -81,15 +81,15 @@ source('plot.R')
 ```{r, questions-1a, cache=TRUE}
 # Number of inpatient and outpatient doctors, intersection between the two
 # sets.
-in_doctors_vec <-  in_doctors$doctor
-out_doctors_vec <- out_doctors$doctor
+inpatient_doctors_vec <-  inpatient_doctors$doctor
+outpatient_doctors_vec <- outpatient_doctors$doctor
 
 # How many medical doctors are there in the train inpatient dataset?
-length(in_doctors_vec)
+length(inpatient_doctors_vec)
 # How many medical doctors are there in the train outpatient dataset?
-length(out_doctors_vec)
+length(outpatient_doctors_vec)
 # Do they match with those from the outpatient record?
-length(intersect(in_doctors_vec, out_doctors_vec))
+length(intersect(inpatient_doctors_vec, outpatient_doctors_vec))
 ```
 
 </div>
@@ -127,7 +127,8 @@ for (column_name in chronic_conditions) {
 
     fig <- ggplot(patients, aes_string(x = 'visit_type', fill = column_name)) +
         geom_bar(position = 'fill') +
-        scale_y_continuous('Fraction of patients') +
+        scale_y_continuous('Percentage of patients',
+                           labels = label_percent()) +
         scale_x_discrete(name = '') +
         scale_fill_discrete(legend_title) +
         ggtitle(title_base)
@@ -198,11 +199,11 @@ for (visit_type in visit_types) {
     print(fig)
 }
 
-in_providers_vec <- unique(inpatient_claims$Provider)
-out_providers_vec <- unique(outpatient_claims$Provider)
-in_out_providers_vec <- intersect(in_providers_vec, out_providers_vec)
-length(in_providers_vec)
-length(out_providers_vec)
+inpatient_providers_vec <- unique(inpatient_claims$Provider)
+outpatient_providers_vec <- unique(outpatient_claims$Provider)
+in_out_providers_vec <- intersect(inpatient_providers_vec, outpatient_providers_vec)
+length(inpatient_providers_vec)
+length(outpatient_providers_vec)
 length(in_out_providers_vec)
 ```
 
@@ -686,3 +687,152 @@ for (visit_type in visit_types) {
 ```
 
 </div>
+
+## Questions 5 {.tabset}
+
+### Questions {.unnumbered}
+
+An easier type of frauds is to submit duplicated claims using stolen patient
+IDs.
+
+While multiple claims with identical information are not always fraudulent,
+the prevalence of these duplicated records would signal potential fraud
+activities.
+
+Consider the various diagnosis codes, procedure codes, admit diagnosis codes
+as the key features, please identify the duplicated claims in the
+inpatients_train, outpatients_train data.
+
+Are these potentially fradulent providers duplicating their own medical
+records, or are they using the records from the other providers?
+
+Assuming that the claimStartDates are authentic, identify the providers which
+are the information receivers. Identify the providers which are the
+information givers.
+
+Summarize the duplicate record counts/provider and study if the statistics
+have different distributions between honest and potentialfraud providers.
+
+Do these potentially fraud providers reuse doctor IDs and/or patient IDs?  If
+so, these fradulent IDs (or if the doctors or patients willingly participate)
+can be used as signals to the other types of fraudulent activities.
+
+Do these duplicated records show any anomaly in terms of geographic locations?
+Even though the original data doesn't specify the providers nor the doctors'
+practice locations, one may use the majority of the patients' residence
+state/county information to infer their physical locations.
+
+Base on your best knowledge of suspicious activities in duplicating the
+patient claims, flag the providers accordingly. Compare with the
+**PotentialFraud** flags offered by the dataset and discuss.
+
+### Answers {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, questions-5a, cache=TRUE}
+to_plot <- filter_out_no_codes(inpatient_duplicates)
+title_count_identical <- 'Number of duplicates submitted for '
+fig_base <- ggplot(to_plot,
+                  aes(x = as.factor(identical_claim_count - 1))) +
+        xlab('Number of duplicate claims submitted') +
+        ggtitle(str_c(title_count_identical, 'inpatients'))
+plot_bar_charts(fig_base, 'claims')
+
+message <- str_c(
+    'Consider only the claims for which there is at least one duplicate,\n',
+    'and collect these into groups of identical claims.  The next plot\n',
+    'answers the question:\n\n',
+    'In these groups, how many providers are there per claim?\n'
+)
+cat(message)
+
+to_plot <- to_plot %>%
+    filter(identical_claim_count > 1)
+
+title_per_provider <- 'Number of claims per provider in identical groups, '
+fig_base <- ggplot(to_plot,
+              aes(x = as.factor(identical_claims_per_provider))) +
+    xlab('Number of claims per provider') +
+    ggtitle(str_c(title_per_provider, 'inpatients'))
+plot_bar_charts(fig_base, 'claims')
+
+to_plot <- filter_out_no_codes(outpatient_duplicates)
+fig_base <- ggplot(to_plot,
+              aes(x = identical_claim_count - 1)) +
+    scale_x_continuous('Number of duplicate claims submitted',
+                       trans = pseudo_log_trans(base = 10),
+                       breaks = c(0, 10, 100, 1e3, 1e4),
+                       labels = label_comma(accuracy = 1)) +
+    ggtitle(str_c(title_count_identical, 'outpatients'))
+plot_histograms(fig_base, y_label = 'claims', bins = 20)
+
+to_plot <- to_plot %>%
+    filter(identical_claim_count > 1)
+
+fig_base <- ggplot(to_plot,
+              aes(x = identical_claims_per_provider)) +
+    scale_x_continuous('Number of claims per provider',
+                       breaks = seq(from = 1.0, to = 2.2, by = 0.2)) +
+    ggtitle(str_c(title_per_provider, 'outpatients'))
+plot_histograms(fig_base, y_label = 'claims', bins = 30,
+                breaks = seq(from = 20e3, to = 100e3, by = 20e3))
+
+# TODO (maybe):  Investigate the apparent outliers with ~2 claims per
+#   provider.
+
+```
+
+```{r, questions-5b, cache=TRUE}
+plot_fraction_original <- function(duplicates_data, visit_type) {
+    to_plot <- duplicates_data %>%
+        filter(visit_type == !!visit_type) %>%
+        filter_out_no_codes() %>%
+        group_by(Provider, PotentialFraud) %>%
+        summarise(
+            original_claims = sum(provider_is_original),
+            number_of_claims = n(),
+            .groups = 'drop'
+        ) %>%
+        mutate(fraction_original = original_claims / number_of_claims)
+
+    title <- str_c('Percentage of claims by provider that are original, ',
+                   visit_type, 's')
+    x_axis_label <- 'Percentage of claims by provider that are original'
+    fig_base <- ggplot(to_plot, aes(x = fraction_original)) +
+        scale_x_continuous(x_axis_label,
+                           labels = label_percent()) +
+        ggtitle(title)
+    plot_histograms(fig_base, y_label = 'providers', bins = 30)
+
+    title <- str_c('Number of claims vs percent that are original, ',
+                   visit_type, 's')
+    fig <- ggplot(to_plot,
+                  aes(x = fraction_original, y = number_of_claims)) +
+        geom_point(aes(color = PotentialFraud)) +
+        ylab('Number of claims by provider') +
+        scale_x_continuous(x_axis_label,
+                           labels = label_percent()) +
+        scale_color_discrete('Potential fraud') +
+        ggtitle(title)
+    print(fig)
+}
+
+message <- str_c(
+    'In a group of claims with identical codes, the earliest claim date is ',
+    'found.\nAs a shorthand, the claim(s) on that date is referred to as ',
+    '"original."\nIn the next two plots, the horizontal axis gives the ',
+    'percent of a provider\'s\nclaims that are "original."'
+)
+cat(message)
+plot_fraction_original(inpatient_duplicates, 'inpatient')
+plot_fraction_original(outpatient_duplicates, 'outpatient')
+```
+</div>
+
+### Answers {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, questions-5c, cache=TRUE}
+```

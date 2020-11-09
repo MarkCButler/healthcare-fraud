@@ -1,5 +1,5 @@
-# This script loads csv data and uses dplyr operations to create data frames
-# that are used for data analysis.
+# This script loads csv data and uses dplyr operations to create/manipulate
+# data frames that are used for data analysis.
 
 library(dplyr)
 library(forcats)
@@ -48,6 +48,42 @@ get_na_counts <- function(data) {
 
 
 #############################################################################
+# Helper funcctions for manipulating data frames.
+#############################################################################
+
+# Drop rows that have NA for all code columns.
+filter_out_no_codes <- function(code_data) {
+    code_colnames <- intersect(all_code_colnames, colnames(code_data))
+    bool_index <- code_data %>%
+        select(all_of(code_colnames)) %>%
+        # The goal is to replace a row by FALSE if all values are NA.  This
+        # can be done with the pipeline
+        #
+        # is.na() %>% `!`() %>% rowSums() %>% as.logical()
+        #
+        # but the code becomes difficult to understand.  Using apply allows
+        # the filtering operation to be expressed more directly.
+        is.na() %>%
+        as.matrix() %>%
+        apply(MARGIN = 1,
+              function(row) {
+                  return(!all(row))
+              })
+    return(code_data[bool_index, ])
+}
+
+# Add the column PotentialFraud to a data frame.  The functions in the current
+# script are designed to handle either training data or test data.  Some of
+# them take a boolean argument that indicates whether the training data set is
+# being processed.  If so, the function add_fraud_flag can be used to
+# add the training label to a data frame that has a Provider column.
+add_fraud_flag <- function(data) {
+    data <- left_join(data, data_frames$train_provider, by = 'Provider')
+    return(data)
+}
+
+
+#############################################################################
 # Characterize missing values.
 #############################################################################
 
@@ -65,7 +101,7 @@ get_visit_counts <- function(claim_data) {
 
 
 #############################################################################
-# Add columns to a data frame of hospital visits.
+# Add columns to a data frame of claims, each representing a hospital visit.
 #############################################################################
 
 # For time-series analysis, we want dates binned into weekly periods.  In
@@ -109,7 +145,7 @@ claim_dates <- get_claim_dates(
 # claim_data, which is then returned.
 #
 augment_claim_data <- function(claim_data, patient_data, visit_type,
-                               add_fraud_flag = TRUE) {
+                               training = TRUE) {
     visit_counts <- get_visit_counts(claim_data)
     claim_data <- claim_data %>%
         mutate(visit_type = !!visit_type) %>%
@@ -135,9 +171,8 @@ augment_claim_data <- function(claim_data, patient_data, visit_type,
                       ~ as_date(., format = '%Y-%m-%d')))
     claim_data <- left_join(claim_data, patient_data, by = 'BeneID') %>%
         mutate(age = (ClaimStartDt - DOB) / 365.24)
-    if (add_fraud_flag) {
-        claim_data <- left_join(claim_data, data_frames$train_provider,
-                                by = 'Provider')
+    if (training) {
+        claim_data <- add_fraud_flag(claim_data)
     }
 
     return(claim_data)
@@ -251,9 +286,6 @@ patients <- rbind(inpatients, outpatients,
 # observations.
 #############################################################################
 
-doctor_colnames <- c('AttendingPhysician', 'OperatingPhysician',
-                     'OtherPhysician')
-
 # Arguments:
 #
 #   claim_data:  a data frame with rows that specify visits to a hospital
@@ -276,15 +308,15 @@ get_doctor_data <- function(claim_data, visit_type) {
     return(doctor_data)
 }
 
-in_doctors <- get_doctor_data(
+inpatient_doctors <- get_doctor_data(
     data_frames$train_inpatient,
     'inpatient'
 )
-out_doctors <- get_doctor_data(
+outpatient_doctors <- get_doctor_data(
     data_frames$train_outpatient,
     'outpatient'
 )
-doctors <- rbind(in_doctors, out_doctors,
+doctors <- rbind(inpatient_doctors, outpatient_doctors,
                  make.row.names = FALSE)
 
 
@@ -293,9 +325,9 @@ doctors <- rbind(in_doctors, out_doctors,
 # gives information about monthly number of claims per provider, and the other
 # gives information about mean claim duration per provider.
 #
-# These data frames are kept separate for the first, a unique row id would
-# consist of (provider, year, month, visit_type), while for the second, the
-# (provider, visit_type) is a unique row id.
+# These data frames are kept separate because for the first, a unique row id
+# would consist of (provider, year, month, visit_type), while for the second,
+# the (provider, visit_type) is a unique row id.
 #############################################################################
 
 # Arguments:
@@ -307,7 +339,7 @@ doctors <- rbind(in_doctors, out_doctors,
 # claim counts per provider
 #
 get_claim_counts <- function(claim_data, visit_type,
-                             add_fraud_flag = TRUE) {
+                             training = TRUE) {
     claim_counts <- claim_data %>%
         mutate(
             ClaimStartDt = as_date(ClaimStartDt, format = '%Y-%m-%d')
@@ -319,22 +351,21 @@ get_claim_counts <- function(claim_data, visit_type,
         group_by(Provider, claim_year, claim_month) %>%
         summarise(claim_count = n(), .groups = 'drop') %>%
         mutate(visit_type = !!visit_type)
-    if (add_fraud_flag) {
-        claim_counts <- left_join(claim_counts, data_frames$train_provider,
-                                by = 'Provider')
+    if (training) {
+        claim_counts <- add_fraud_flag(claim_counts)
     }
     return(claim_counts)
 }
 
-in_claim_counts <- get_claim_counts(
+inpatient_claim_counts <- get_claim_counts(
     data_frames$train_inpatient,
     'inpatient'
 )
-out_claim_counts <- get_claim_counts(
+outpatient_claim_counts <- get_claim_counts(
     data_frames$train_outpatient,
     'outpatient'
 )
-claim_counts <- rbind(in_claim_counts, out_claim_counts,
+claim_counts <- rbind(inpatient_claim_counts, outpatient_claim_counts,
                       make.row.names = FALSE)
 
 # Arguments:
@@ -346,7 +377,7 @@ claim_counts <- rbind(in_claim_counts, out_claim_counts,
 # durations per provider
 #
 get_claim_durations <- function(claim_data, visit_type,
-                                add_fraud_flag = TRUE) {
+                                training = TRUE) {
     claim_durations <- claim_data %>%
         mutate(across(c(ClaimStartDt, ClaimEndDt),
                       ~ as_date(., format = '%Y-%m-%d'))) %>%
@@ -355,23 +386,21 @@ get_claim_durations <- function(claim_data, visit_type,
         summarise(mean_claim_duration = mean(claim_duration),
                   .groups = 'drop') %>%
         mutate(visit_type = !!visit_type)
-    if (add_fraud_flag) {
-        claim_durations <- left_join(
-            claim_durations, data_frames$train_provider, by = 'Provider'
-        )
+    if (training) {
+        claim_durations <- add_fraud_flag(claim_durations)
     }
     return(claim_durations)
 }
 
-in_claim_durations <- get_claim_durations(
+inpatient_claim_durations <- get_claim_durations(
     data_frames$train_inpatient,
     'inpatient'
 )
-out_claim_durations <- get_claim_durations(
+outpatient_claim_durations <- get_claim_durations(
     data_frames$train_outpatient,
     'outpatient'
 )
-claim_durations <- rbind(in_claim_durations, out_claim_durations,
+claim_durations <- rbind(inpatient_claim_durations, outpatient_claim_durations,
                          make.row.names = FALSE)
 
 
@@ -414,3 +443,94 @@ freq_admit_codes <- rbind(
     freq_admit_codes_outpatient,
     make.row.names = FALSE
 )
+
+
+#############################################################################
+# Generate data frames that give information about duplicated claims.
+#############################################################################
+
+# Names of columns that contain a code for a hospital visit.
+all_claim_colnames <- union(colnames(data_frames$train_inpatient),
+                            colnames(data_frames$train_outpatient))
+bool_index <- str_detect(tolower(all_claim_colnames), 'code')
+all_code_colnames <- all_claim_colnames[bool_index]
+
+# Arguments:
+#
+#   claim_data:  a data frame with rows that specify visits to a hospital
+#   visit_type:  either 'inpatient' or 'outpatient'
+#
+# The function uses dplyr operations to extract information about duplicate
+# claims, i.e., claims with different ClaimID but identical values for all
+# codes associated with the claim.
+#
+get_duplicates <- function(claim_data, visit_type,
+                           training = TRUE) {
+    code_colnames <- intersect(all_code_colnames, colnames(claim_data))
+
+    # Starting with claim_data, gradually build a code_data data frame with
+    # information about duplicated codes.
+    code_data <- claim_data %>%
+        mutate(across(ClaimStartDt,
+                      ~ as_date(., format = '%Y-%m-%d'))) %>%
+        select(ClaimStartDt, BeneID, ClaimID, Provider,
+               all_of(c(code_colnames, doctor_colnames)))
+
+    code_data <- code_data %>%
+        # For each claim, find how many identical claims there are (where
+        # identical means "has exactly the same set of codes").  Also find how
+        # many distinct providers filed an identical claim and the earliest
+        # ClaimStartDt for each set of identical claims.
+        group_by(across(all_of(code_colnames))) %>%
+        summarise(identical_claim_count = n_distinct(ClaimID),
+                  provider_count = n_distinct(Provider),
+                  first_date = min(ClaimStartDt), .groups = 'drop') %>%
+        mutate(
+            identical_claims_per_provider = identical_claim_count / provider_count
+        ) %>%
+        # Treating the set of codes for a claim as a row ID, join the new
+        # columns to code_data.
+        right_join(code_data, by = code_colnames) %>%
+        # Add column 'original' indicating whether the ClaimStartDt for that
+        # claim is the earliest among the set of identical claims.
+        mutate(original = (ClaimStartDt == first_date))
+
+    # For each set of identical claims, find how many rows are labeled as
+    # original, i.e., how many have the earliest ClaimStartDt.  Add this as a
+    # column to the full data frame code_data.
+    code_data <- code_data %>%
+        filter(original == TRUE) %>%
+        group_by(across(all_of(code_colnames))) %>%
+        summarise(original_claim_count = n(), .groups = 'drop') %>%
+        right_join(code_data, by = code_colnames)
+
+    # Next add a column determining whether the provider for a claim is one of
+    # the providers for an "original" claim (i.e., a claim with the earliest
+    # ClaimStartDt among identical claims).  This is done by first finding all
+    # ClaimID's for which the provider is one of the original providers.
+    code_data <- code_data %>%
+        filter(original == TRUE) %>%
+        select(Provider, all_of(code_colnames)) %>%
+        distinct() %>%
+        rename(original_provider = Provider) %>%
+        right_join(code_data, by = code_colnames) %>%
+        # This filtering step gives a data frame of claims that have one of
+        # the original providers for the corresponding set of identical claims.
+        filter(Provider == original_provider) %>%
+        select(ClaimID) %>%
+        mutate(provider_is_original = TRUE) %>%
+        full_join(code_data, by = 'ClaimID') %>%
+        replace_na(list(provider_is_original = FALSE)) %>%
+        # Add a column indicating whether the claim is for an inpatient visit
+        # or an outpatient visit.
+        mutate(visit_type = !!visit_type)
+
+    if (training) {
+        code_data <- add_fraud_flag(code_data)
+    }
+
+    return(code_data)
+}
+
+inpatient_duplicates <- get_duplicates(data_frames$train_inpatient, 'inpatient')
+outpatient_duplicates <- get_duplicates(data_frames$train_outpatient, 'outpatient')
