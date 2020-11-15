@@ -571,7 +571,7 @@ for (claim_type in claim_types) {
 
 ```{r, claim-duration, cache=TRUE}
 for (claim_type in claim_types) {
-    to_plot <- provider_claim_durations %>%
+    to_plot <- providers %>%
         filter(claim_type == !!claim_type)
 
     title <- str_c('Mean claim duration by provider, ', claim_type, ' visits')

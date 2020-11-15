@@ -26,13 +26,12 @@ source('globals.R')
 # 4. inpatient_doctors, outpatient_doctors -- data frames that have a
 #    physician ID as a unique row identifier.
 #
-# 5. provider_claim_counts_inpatient, provider_claim_counts_outpatient -- data
+# 5. inpatient_providers, outpatient_providers -- data frames that have
+#    provider ID as a unique row identifier.
+#
+# 6. provider_claim_counts_inpatient, provider_claim_counts_outpatient -- data
 #    frames that give monthly claim counts per provider.  The combination of
 #    provider, year, month is a unique row identifier.
-#
-# 6. provider_claim_durations_inpatient, provider_claim_durations_outpatient
-#    -- data frames that give information about the mean claim duration for a
-#    provider.  The provider ID is a unique row identifier.
 #
 # 7. freq_admit_codes_inpatient, freq_admit_codes_outpatient -- data frames
 #    that list the most admission codes, with admission code as a unique row
@@ -586,11 +585,11 @@ provider_claim_counts <- rbind(provider_claim_counts_inpatient,
 #   claim_type:  either 'inpatient' or 'outpatient'
 #   training:  boolean indicating whether training data is being processed
 #
-# The function uses dplyr operations to extract information about mean claim
-# durations per provider
+# The function uses dplyr operations to generate a data frame of provider
+# information.
 #
-get_provider_claim_durations <- function(claim_data, claim_type, training = TRUE) {
-    claim_durations <- claim_data %>%
+get_provider_data <- function(claim_data, claim_type, training = TRUE) {
+    provider_data <- claim_data %>%
         mutate(across(c(ClaimStartDt, ClaimEndDt),
                       ~ as_date(., format = '%Y-%m-%d'))) %>%
         mutate(claim_duration = ClaimEndDt - ClaimStartDt) %>%
@@ -599,22 +598,22 @@ get_provider_claim_durations <- function(claim_data, claim_type, training = TRUE
                   .groups = 'drop') %>%
         mutate(claim_type = !!claim_type)
     if (training) {
-        claim_durations <- add_fraud_flag(claim_durations)
+        provider_data <- add_fraud_flag(provider_data)
     }
-    return(claim_durations)
+    return(provider_data)
 }
 
-provider_claim_durations_inpatient <- get_provider_claim_durations(
-    data_frames$train_inpatient,
-    'inpatient'
+inpatient_providers <- get_provider_data(
+    claim_data = data_frames$train_inpatient,
+    claim_type = 'inpatient'
 )
-provider_claim_durations_outpatient <- get_provider_claim_durations(
-    data_frames$train_outpatient,
-    'outpatient'
+outpatient_providers <- get_provider_data(
+    claim_data = data_frames$train_outpatient,
+    claim_type = 'outpatient'
 )
-provider_claim_durations <- rbind(provider_claim_durations_inpatient,
-                                  provider_claim_durations_outpatient,
-                                  make.row.names = FALSE)
+providers <- rbind(inpatient_providers,
+                   outpatient_providers,
+                   make.row.names = FALSE)
 
 
 #############################################################################
