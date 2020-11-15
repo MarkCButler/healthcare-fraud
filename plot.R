@@ -120,16 +120,17 @@ log_scale_dollar <- function(axis_label, axis) {
 #
 #############################################################################
 
-# Plot a bar chart in two formats
-plot_bar_charts <- function(fig_base, y_label) {
+# Plot a bar chart in two formats.  Note that the argument geom_func can be
+# geom_bar or geom_col.
+plot_bar_charts <- function(fig_base, y_label, geom_func = geom_bar) {
     fig <- fig_base +
-        geom_bar(fill = 'navyblue') +
+        geom_func(fill = 'navyblue') +
         scale_y_continuous(str_c('Number of ', y_label),
                            labels = label_comma())
     print(fig)
 
     fig <- fig_base +
-        geom_bar(aes(fill = PotentialFraud),
+        geom_func(aes(fill = PotentialFraud),
                  position = 'fill') +
         scale_y_continuous(str_c('Percentage of ', y_label),
                            labels = label_percent()) +
@@ -280,29 +281,34 @@ plot_provider_claim_counts <- function(claim_counts, claim_type) {
 
     to_plot <- plot_data %>%
         group_by(Provider) %>%
-        summarise(count = sum(claim_count), .groups = 'drop')
+        summarise(count = sum(claim_count), .groups = 'drop') %>%
+        left_join(
+            select(plot_data, Provider, PotentialFraud),
+            by = 'Provider'
+        )
+
     title <- str_c('Number of claims per provider in 2009, ', claim_type, 's')
-    fig <- ggplot(to_plot, aes(x = count)) +
-        geom_histogram(fill = 'navyblue', bins = 50) +
-        xlab('Number of claims') +
-        ylab('Number of claim_counts') +
+    fig_base <- ggplot(to_plot, aes(x = count)) +
+        scale_x_continuous('Number of claims',
+                           trans = log_trans(base = 10),
+                           breaks = c(1, 10, 100, 1000),
+                           labels = label_comma(accuracy = 1)) +
         ggtitle(title)
-    print(fig)
+    plot_histograms(fig_base, 'providers', bins = 30)
 
     cat('The maximum number of ', claim_type, ' claims for a provider is ',
         max(to_plot$count), '.\n', sep = '')
 
     to_plot <- plot_data %>%
-        group_by(claim_month) %>%
+        group_by(claim_month, PotentialFraud) %>%
         summarise(count = sum(claim_count), .groups = 'drop')
+
     title <- str_c('Number of claims per month in 2009, ', claim_type, 's')
-    fig <- ggplot(to_plot,
-                  aes(x = claim_month, y = count)) +
-        geom_col(fill = 'navyblue') +
+    fig_base <- ggplot(to_plot,
+                       aes(x = claim_month, y = count)) +
         xlab('Month') +
-        ylab('Number of claims') +
         ggtitle(title)
-    print(fig)
+    plot_bar_charts(fig_base, 'claims', geom_func = geom_col)
 
     to_display <- plot_data %>%
         group_by(claim_month) %>%
