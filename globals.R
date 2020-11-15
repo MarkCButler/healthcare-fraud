@@ -41,6 +41,6 @@ names(code_descriptions) <- c(
     'V7612', '42731', '4019', '25000', 'V5883'
 )
 
-# Names of columns that contain doctor id.
-doctor_colnames <- c('AttendingPhysician', 'OperatingPhysician',
-                     'OtherPhysician')
+# Analysis is performed separately for inpatient and outpatient visits, so
+# plots are typically generated as a loop over claim_types.
+claim_types <- c('inpatient', 'outpatient')
