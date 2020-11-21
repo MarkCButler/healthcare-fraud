@@ -1,11 +1,18 @@
-# healthcare-fraud
-Data analysis and machine learning detection of healthcare fraud for a Kaggle
+# healthcare
+Analysis of a healthcare-fraud
 [dataset](https://www.kaggle.com/rohitrox/healthcare-provider-fraud-detection-analysis)
+from Kaggle
 
-The analysis and machine-learning results are reported in the R markdown file
-*healthcare_fraud.Rmd*.  The rendered html output is available at
+The analysis has two goals:
 
-https://markcbutler.github.io/healthcare-fraud/healthcare_fraud.html
+  - Provide general insight into the healthcare market represented by the dataset
+  - Reveal associations involving the "potential fraud" label for healthcare
+    providers in the training dataset
+
+The analysis is presented in the R markdown file *healthcare.Rmd*.  The
+rendered html output is available at
+
+https://markcbutler.github.io/healthcare/healthcare.html
 
 ## Rendering the markdown file
 
@@ -13,13 +20,32 @@ The R package `renv` was used to create a reproducible environment for
 rendering the markdown file.  To install the environment, execute the R
 command
 
-`renv:init()`
+`renv::init()`
 
 with the root directory of the cloned repo as the working directory.  An
 `renv` environment will be created, and the packages specified by the file
 *renv.lock* will be installed into the new environment.
 
+For the `renv` environment to be active, the *.Rprofile* file created by
+`renv::init()` must be executed during R startup.  This is accomplished by
+starting R with the repo root directory as the working directory.  In an IDE
+such as RStudio or PyCharm, a project based in the repo root directory can be
+created, and when this project is opened, the `renv` environment will be
+active.
+
 The csv files that provide data for the project can be downloaded from
 [Kaggle](https://www.kaggle.com/rohitrox/healthcare-provider-fraud-detection-analysis).
 These files should be placed in a `data` directory created in the repo root
 directory.
+
+The rendered html file includes JavaScript commands to load an image
+`images/fraud-photo.jpg` and place it at the top of the page.  This image is
+not stored in the repo's master branch.  Instead, it is available in the
+gh-pages branch that also contains the rendered output file *healthcare.html*.
+(Note that the link https://markcbutler.github.io/healthcare/healthcare.html
+points to this html file in the gh-pages branch.)
+
+In order to render the R markdown file *healthcare.Rmd* in the master branch
+and include the image in the displayed html page, copy the `images` directory
+from gh-pages into the directory where the rendered output file
+*healthcare.html* is stored.
