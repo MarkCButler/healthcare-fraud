@@ -5,7 +5,8 @@ from Kaggle
 
 The analysis has two goals:
 
-  - Provide general insight into the healthcare market represented by the dataset
+  - Provide general insight into the healthcare market represented by the
+    dataset (apparently healthcare covered by Medicare)
   - Reveal associations involving the "potential fraud" label for healthcare
     providers in the training dataset
 
@@ -38,14 +39,15 @@ The csv files that provide data for the project can be downloaded from
 These files should be placed in a `data` directory created in the repo root
 directory.
 
-The rendered html file includes JavaScript commands to load an image
-`images/fraud-photo.jpg` and place it at the top of the page.  This image is
-not stored in the repo's master branch.  Instead, it is available in the
-gh-pages branch that also contains the rendered output file *healthcare.html*.
-(Note that the link https://markcbutler.github.io/healthcare/healthcare.html
-points to this html file in the gh-pages branch.)
+The R markdown file includes JavaScript commands to load an image
+`images/fraud-photo.jpg` and place it at the top of the displayed html page.
+This image is not stored in the repo's master branch.  Instead, it is
+available in the gh-pages branch, which also contains the rendered output file
+*healthcare.html*.  (Note that the link
+https://markcbutler.github.io/healthcare/healthcare.html given above points to
+this html file in the gh-pages branch.)
 
-In order to render the R markdown file *healthcare.Rmd* in the master branch
-and include the image in the displayed html page, copy the `images` directory
-from gh-pages into the directory where the rendered output file
-*healthcare.html* is stored.
+After the R markdown file *healthcare.Rmd* in the master branch has been
+rendered, copy the `images` directory from gh-pages into the directory where
+the output file *healthcare.html* is stored.  This will allow the image to be
+displayed in the html page.

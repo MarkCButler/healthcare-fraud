@@ -87,7 +87,7 @@ generate_condition_column <- function(data) {
 
 
 #############################################################################
-# Format plot axes.
+# Format plot axes, top margin.
 #############################################################################
 
 # Function log_scale_dollar is used to avoid repeated verbose calls involving
@@ -108,6 +108,17 @@ log_scale_dollar <- function(axis_label, axis) {
     } else {
         stop('Argument "axis" must be "x" or "y".')
     }
+}
+
+# Add space to the top margin of a plot.  Note that for all plots, the bottom
+# margin is increased from 5.5 points to 20 points, in order to avoid a
+# cluttered appearance in the rendered output.  In cases where echoed code is
+# not displayed above a plot or a series of plots, the top margin is also
+# increased to 20 points.
+add_to_top_margin <- function(fig) {
+    fig <- fig +
+        theme(plot.margin = margin(20, 5.5, 20, 5.5, 'pt'))
+    return(fig)
 }
 
 
@@ -238,6 +249,38 @@ plot_seasonality <- function(series_data, stl_model, title) {
 #
 # These functions are defined in order to simplify the R markdown file.
 #############################################################################
+
+plot_patient_conditions <- function(patient_data, claim_type,
+                                    large_top_margin = FALSE) {
+    to_plot <- patient_data %>%
+        select(all_of(chronic_conditions))
+    number_of_patients <- nrow(to_plot)
+    to_plot_vec <- colSums(to_plot == 'Y')
+    vec_labels <- convert_to_labels(names(to_plot_vec)) %>%
+        factor() %>%
+        reorder(to_plot_vec)
+    to_plot <- data.frame(label = vec_labels,
+                          patient_count = to_plot_vec)
+    title <- str_c('Number of ', claim_type, 's with each chronic condition')
+    line_label <- str_c('Number of ', claim_type, 's\nin dataset')
+    fig <- to_plot %>%
+        ggplot(aes(x = label, y = patient_count)) +
+        geom_col(aes(fill = label)) +
+        geom_hline(yintercept = number_of_patients,
+                   color = 'navyblue') +
+        xlab('Chronic condition') +
+        scale_y_continuous('Number of patients',
+                           labels = label_comma(accuracy = 1)) +
+        annotate('text', x = 5.5, y = number_of_patients * 0.98,
+                 label = line_label, hjust = 'right') +
+        coord_flip() +
+        guides(fill = FALSE) +
+        ggtitle(title)
+    if (large_top_margin) {
+        fig <- add_to_top_margin(fig)
+    }
+    print(fig)
+}
 
 plot_chronic_condition_claim_counts <- function(patients) {
     for (variable_name in chronic_conditions) {

@@ -421,9 +421,11 @@ augment_patient_data <- function(patient_data, claim_data, claim_counts) {
         summarise(provider_count = n(), .groups = 'drop')
 
     # For both the training and test sets, the inpatient data frame has
-    # missing values for DeductibleAmtPaid, but the minimum value for the
-    # column is about $1000.  So in this context, it seems that NA is used in
-    # place of zero.
+    # missing values for DeductibleAmtPaid.  In all cases where the value is
+    # not missing in the inpatient data frame, it is $1068.
+    #
+    # It is reasonable to guess that for inpatient visits, the value of NA
+    # correspond to visits in which the deductible was 0.
     #
     # For the outpatient data frames, however, there are many zero values in
     # DeductibleAmtPaid but no missing values.

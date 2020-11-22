@@ -1,8 +1,8 @@
 ---
-title: 'Analysis of Healthcare Data'
+title: 'Analysis of a Healthcare-Fraud Dataset'
 output:
   html_document:
-    code_folding: show
+    code_folding: hide
     css: style.css
     highlight: tango
     number_sections: true
@@ -12,6 +12,15 @@ output:
 editor_options:
   chunk_output_type: console
 ---
+
+```{js, echo = FALSE}
+// Add a picture to the top of the page.  JavaScript is used because the
+// formatting options for R markdown don't appear to allow an option to put
+// the image above the document title.
+let photo_html = '<img id="photo" src="images/fraud-photo.jpg" alt="photo">';
+header = document.getElementById('header');
+header.innerHTML = photo_html + header.innerHTML;
+```
 
 ```{r, setup, message=FALSE, include=FALSE}
 knitr::opts_chunk$set(
@@ -37,6 +46,160 @@ library(tidyr)
 # This gives 5.5 for each side.  Increase the bottom margin.
 theme_update(plot.margin = margin(5.5, 5.5, 20, 5.5, 'pt'))
 ```
+
+```{r, scripts, message=FALSE, echo=FALSE, cache=TRUE}
+source('globals.R')
+source('data_frames.R')
+source('plot.R')
+```
+
+# Summary
+
+Exploratory data analysis of a healthcare-fraud
+[dataset](https://www.kaggle.com/rohitrox/healthcare-provider-fraud-detection-analysis)
+from Kaggle is presented.  The analysis has two goals:
+
+  - Provide general insight into the healthcare market represented by the
+    dataset (apparently healthcare covered by Medicare)
+  - Reveal associations involving the "potential fraud" label for healthcare
+    providers in the training dataset
+
+# Dataset {.tabset}
+
+## Description {.unnumbered}
+
+The dataset contains training data and test data, each with four data frames.
+
+The training data was used for the analysis.  Details of the data frames:
+
+  - Inpatient visits to a hospital (30 columns, <nobr>~ 40,000</nobr> rows, )
+  - Outpatient visits to a hospital (27 columns, <nobr>~ 520,000</nobr> rows)
+  - Patients who made these hospital visits (25 columns, <nobr>~ 140,000</nobr>
+    rows)
+  - Providers visited (2 columns:  provider ID and PotentialFraud label, 5,410
+    rows)
+
+## Scope {.unnumbered}
+
+The hospital visits in the dataset occurred throughout 2009 and were mainly
+limited to 2009.
+
+The hospital patients appear to be residents of the US.
+
+  - Each patient is identified with a state and county, both labeled by
+    numbers.  The state labels range from 1 to 54, which suggests that the
+    data is for US patients in the 50 states, together with the District of
+    Columbia and three US territories.
+
+The number of providers in the dataset (including both training and test data)
+is 6,763.  This is somewhat larger than the number of hospitals in the US in
+2009 (5,795).
+
+  - The American Hospital Association (AHA) provides statistics on hospitals
+    in the US.  Although the description of the dataset on Kaggle refers to
+    "hospital visits," it may be that not all healthcare providers visited met
+    the AHA definition of a hospital.
+
+The dataset includes information for <nobr>~ 690,000</nobr> visits to a
+hospital (or similar healthcare provider), including <nobr>~ 50,000</nobr>
+inpatient visits and <nobr>~ 640,000</nobr> outpatient visits.  By way of
+comparison, the number of inpatient hospital visits in the US in 2018 was
+about 36 million.
+
+The data appears to be for Medicare patients, which include people who are 65
+or older, certain younger people with disabilities, and people with end-stage
+renal disease.
+
+  - The clue leading to this guess is that for nearly all of the inpatient visits,
+    the deductible paid by the patient was $1068, the 2009 deductible for an
+    inpatient visit covered by Medicare.  (About 2% of the inpatient visits
+    had NA for the deductible paid, but for all other inpatient visits the
+    deductible paid was $1068.)
+  - Consistent with the special treatment of end-stage renal disease by
+    Medicare, the dataframe of patient info include a column of 0 and 1 values
+    with column heading "Renal Disease."  This column is among other columns
+    that identify a patient, such as birth date, gender and race.
+
+
+
+## Data integrity {.unnumbered}
+
+The dataset appears clean, and it passed several checks for consistency among
+the data frames.
+
+There is an apparent inconsistency in some outpatient visits:  the two
+features that report payments for a visit (DeductibleAmtPaid,
+InscClaimAmtReimbursed) are both equal to zero in some cases.
+
+  - This is the case for about 4% of the outpatient visits in the training
+    data, for instance.
+  - Does zero payment indicate that payment was refused because fraud was
+    suspected?  Apparently not, because the fraction of zero-payment rows
+    labeled as PotentialFraud (36.1%) is quite close to the fraction for the
+    full training set of outpatient visits (36.6%).
+  - It may be that in practice, hospitals receive zero payment for some
+    outpatient visits, e.g., because the costs associated with collecting
+    payment are too great to justify pursuing payment.  This could be
+    investigated by checking whether certain diagnosis or treatment codes are
+    associated with zero-payment visits.
+
+In most (or possibly all) cases, NA in the csv files can be viewed as
+artifacts of the way in which the data is presented, rather than valid data
+points that are missing.
+
+Columns with NA:
+
+  1. The csv tables for inpatient and outpatient visits include a number of
+     columns in which codes relevant for the visit can be reported.  For
+     example, there are 10 columns ClmDiagnosisCode_1 through
+     ClmDiagnosisCode_10 for claim diagnosis codes, and there are many NA in
+     these columns.
+
+      - However, the presence of NA in these columns can be viewed as an
+        artifact of the table organization, rather than as valid data that is
+        not present.
+      - There are <nobr>~ 10,000</nobr> outpatient visits (but no inpatient
+        visits) in the dataset that have NA for all code columns.
+
+   2. Similarly, three columns are reserved for physicians associated with the
+      visit:  AttendingPhysician, OperatingPhysician, OtherPhysician.
+
+      - Missing value in these columns can also be viewed as an artifact of
+        the table organization.
+      - There are 135 inpatient visits and 1688 outpatient visits with NA in
+        all three of these columns.
+
+  3. For about 2% of the inpatient visits (but not for any outpatient visits),
+     DeductibleAmtPaid is NA.  As noted in the section on dataset scope, the
+     deductible paid by inpatients was $1068 in all cases where it was not NA.
+
+     - These NA may correspond to visits for which the deductible payment was
+       zero.
+     - However there are samples that have NA for DeductibleAmtPaid with
+       InscClaimAmtReimbursed equal to zero.  For instance, there are 25 rows
+       of this sort in the training data.
+
+
+# Analysis
+
+## Chronic Conditions {.tabset}
+
+### Summary {.unnumbered}
+
+Since the dataset appears to represent a set of visits covered by Medicare,
+it is expected that the patients are mainly elderly and that many have chronic
+health problems.  However, the frequency of some chronic conditions among
+these patients is quite high.
+
+<div class="code-block">
+
+```{r, summary, cache=TRUE, echo=FALSE}
+plot_patient_conditions(inpatients, 'inpatient', large_top_margin = TRUE)
+```
+
+</div>
+
+### Discussion {.unnumbered}
 
 ## Questions 1 {.tabset}
 
@@ -71,12 +234,6 @@ Summarize your finding.
 ### Answers {.tab-display .unnumbered}
 
 <div class="code-block">
-
-```{r, data-frames, message=FALSE, cache=TRUE}
-source('globals.R')
-source('data_frames.R')
-source('plot.R')
-```
 
 ```{r, questions-1a, cache=TRUE}
 # Number of inpatient and outpatient doctors, intersection between the two
@@ -264,34 +421,8 @@ for (variable_name in chronic_conditions) {
 <div class="code-block">
 
 ```{r, questions-2b, cache=TRUE}
-for (claim_type in claim_types) {
-    to_plot <- patients %>%
-        filter(claim_type == .env$claim_type) %>%
-        select(all_of(chronic_conditions))
-    number_of_patients <- nrow(to_plot)
-    to_plot_vec <- colSums(to_plot == 'Y')
-    vec_labels <- convert_to_labels(names(to_plot_vec)) %>%
-        factor() %>%
-        reorder(to_plot_vec)
-    to_plot <- data.frame(label = vec_labels,
-                          patient_count = to_plot_vec)
-    title <- str_c('Number of ', claim_type, 's with each chronic condition')
-    line_label <- str_c('Number of ', claim_type, 's\nin dataset')
-    fig <- to_plot %>%
-        ggplot(aes(x = label, y = patient_count)) +
-        geom_col(aes(fill = label)) +
-        geom_hline(yintercept = number_of_patients,
-                   color = 'navyblue') +
-        xlab('Chronic condition') +
-        scale_y_continuous('Number of patients',
-                           labels = label_comma(accuracy = 1)) +
-        annotate('text', x = 5.5, y = number_of_patients * 0.98,
-                 label = line_label, hjust = 'right') +
-        coord_flip() +
-        guides(fill = FALSE) +
-        ggtitle(title)
-    print(fig)
-}
+plot_patient_conditions(inpatients, 'inpatient')
+plot_patient_conditions(outpatients, 'outpatient')
 ```
 
 </div>
