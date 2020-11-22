@@ -54,7 +54,7 @@ convert_to_labels <- function(condition_vec) {
 # Labels for payment variables.
 #############################################################################
 
-payment_colnames <- c('total_reimbursed', 'reimbursed_per_visit',
+payment_variables <- c('total_reimbursed', 'reimbursed_per_visit',
                       'total_cost_of_claims', 'claim_cost_per_visit')
 payment_labels <- c(
     'Total payment by insurance per patient',
@@ -62,7 +62,7 @@ payment_labels <- c(
     'Total paid to hospitals per patient',
     'Mean paid to hospital per patient per visit'
 )
-names(payment_labels) <- payment_colnames
+names(payment_labels) <- payment_variables
 
 
 #############################################################################
@@ -165,6 +165,27 @@ plot_histograms <- function(fig_base, y_label, bins,
 
 
 #############################################################################
+# Overlay histograms and frequency polygons with fill/color determined by a
+# categorical variable.
+#############################################################################
+
+plot_hist_with_freqpoly <- function(fig_base, variable_name,
+                                    legend_title, bins) {
+    fig <- fig_base +
+        geom_histogram(
+            aes_string(fill = variable_name), position = 'identity',
+            bins = bins, alpha = 0.15
+        ) +
+        geom_freqpoly(
+            aes_string(color = variable_name), position = 'identity',
+            bins = bins, size = 0.7
+        ) +
+        labs(fill = legend_title, color = legend_title)
+    print(fig)
+}
+
+
+#############################################################################
 # Plot time-series, manipulate data for time-series plots.
 #############################################################################
 
@@ -183,7 +204,8 @@ extract_series_data <- function(claim_data, date_range) {
 }
 
 plot_series <- function(to_plot, title) {
-    fig <- ggplot(to_plot, aes(x = ClaimStartDt, y = count)) +
+    fig <- to_plot %>%
+        ggplot(aes(x = ClaimStartDt, y = count)) +
         geom_point(color = 'navyblue') +
         geom_line(color = 'navyblue') +
         xlab('Date') +
@@ -198,8 +220,8 @@ plot_seasonality <- function(series_data, stl_model, title) {
     seasonality_data <- data.frame(weekday = weekday,
                                    seasonality = seasonality)
 
-    fig <- ggplot(seasonality_data,
-                  aes(x = weekday, y = seasonality, group = 1)) +
+    fig <- seasonality_data %>%
+        ggplot(aes(x = weekday, y = seasonality, group = 1)) +
         geom_line(color = 'navyblue') +
         geom_point(color = 'navyblue') +
         xlab('Weekday') +
@@ -216,14 +238,15 @@ plot_seasonality <- function(series_data, stl_model, title) {
 # These functions are defined in order to simplify the R markdown file.
 #############################################################################
 
-plot_chron_cond_claim_counts <- function(patients) {
-    for (column_name in chronic_conditions) {
-        condition_label <- chronic_condition_labels[column_name]
+plot_chronic_condition_claim_counts <- function(patients) {
+    for (variable_name in chronic_conditions) {
+        condition_label <- chronic_condition_labels[variable_name]
         legend_title <- first_char_to_upper(condition_label)
         condition_label <- str_replace_all(condition_label, '\n', ' ')
         title_base <- str_c('Distribution of ', condition_label)
 
-        fig <- ggplot(patients, aes_string(x = 'claim_type', fill = column_name)) +
+        fig <- patients %>%
+            ggplot(aes_string(x = 'claim_type', fill = variable_name)) +
             geom_bar(position = 'fill') +
             scale_y_continuous('Percentage of patients',
                                labels = label_percent()) +
@@ -234,12 +257,13 @@ plot_chron_cond_claim_counts <- function(patients) {
 
         for (claim_type in claim_types) {
             to_plot <- patients %>%
-                filter(claim_type == !!claim_type)
+                filter(claim_type == .env$claim_type)
             x_axis_values <- seq(min(to_plot$patient_claim_count),
                                  max(to_plot$patient_claim_count))
             title <- str_c(title_base, ', ', claim_type, 's')
             fig <- to_plot %>%
-                ggplot(aes_string(x = 'patient_claim_count', fill = column_name)) +
+                ggplot(aes_string(x = 'patient_claim_count',
+                                  fill = variable_name)) +
                 geom_bar(position = 'fill') +
                 scale_x_discrete('Number of visits',
                                  limits = factor(x_axis_values)) +
@@ -253,17 +277,19 @@ plot_chron_cond_claim_counts <- function(patients) {
 
 plot_payments <- function(patients) {
     for (claim_type in claim_types) {
-        to_select <- c(payment_colnames, chronic_conditions)
+        to_select <- c(payment_variables, chronic_conditions)
         to_plot <- patients %>%
-            filter(claim_type == !!claim_type) %>%
+            filter(claim_type == .env$claim_type) %>%
             select(all_of(to_select)) %>%
-            # Patients for which the only visit has visit_cost == 0 show up with
-            # missing values for the columns in payment_colnames.
+            # Patients for which the only visit has visit_cost == 0 show up
+            # with missing values for the columns in payment_variables.
             drop_na() %>%
             generate_condition_column()
-        for (column_name in payment_colnames) {
-            title <- str_c(payment_labels[column_name], ', ', claim_type, 's')
-            fig <- ggplot(to_plot, aes_string(x = 'condition', y = column_name)) +
+        for (variable_name in payment_variables) {
+            title <- str_c(payment_labels[variable_name], ', ',
+                           claim_type, 's')
+            fig <- to_plot %>%
+                ggplot(aes_string(x = 'condition', y = variable_name)) +
                 geom_boxplot(aes(fill = condition)) +
                 log_scale_dollar(axis_label = 'Payment amount', axis = 'y') +
                 xlab('Chronic condition') +
@@ -277,7 +303,7 @@ plot_payments <- function(patients) {
 
 plot_provider_claim_counts <- function(claim_counts, claim_type) {
     plot_data <- claim_counts %>%
-        filter(claim_type == !!claim_type, claim_year == 2009)
+        filter(claim_type == .env$claim_type, claim_year == 2009)
 
     to_plot <- plot_data %>%
         group_by(Provider) %>%
@@ -288,7 +314,8 @@ plot_provider_claim_counts <- function(claim_counts, claim_type) {
         )
 
     title <- str_c('Number of claims per provider in 2009, ', claim_type, 's')
-    fig_base <- ggplot(to_plot, aes(x = count)) +
+    fig_base <- to_plot %>%
+        ggplot(aes(x = count)) +
         scale_x_continuous('Number of claims',
                            trans = log_trans(base = 10),
                            breaks = c(1, 10, 100, 1000),
@@ -304,8 +331,8 @@ plot_provider_claim_counts <- function(claim_counts, claim_type) {
         summarise(count = sum(claim_count), .groups = 'drop')
 
     title <- str_c('Number of claims per month in 2009, ', claim_type, 's')
-    fig_base <- ggplot(to_plot,
-                       aes(x = claim_month, y = count)) +
+    fig_base <- to_plot %>%
+        ggplot(aes(x = claim_month, y = count)) +
         xlab('Month') +
         ggtitle(title)
     plot_bar_charts(fig_base, 'claims', geom_func = geom_col)
@@ -317,7 +344,8 @@ plot_provider_claim_counts <- function(claim_counts, claim_type) {
     return(datatable(
         to_display,
         rownames = FALSE,
-        colnames = c('Month', str_c('Max ', claim_type, ' claims per provider')),
+        colnames = c('Month',
+                     str_c('Max ', claim_type, ' claims per provider')),
         options = list(
             dom = 't',
             columnDefs = list(table_alignment),
@@ -327,7 +355,8 @@ plot_provider_claim_counts <- function(claim_counts, claim_type) {
 }
 
 plot_payment_distribution <- function(data, variable, title) {
-    fig <- ggplot(data, aes(x = {{variable}})) +
+    fig <- data %>%
+        ggplot(aes(x = {{variable}})) +
         geom_histogram(fill = 'navyblue', bins = 30) +
         log_scale_dollar('Payment amount', 'x') +
         scale_y_continuous('Number of visits', labels = label_comma()) +
@@ -335,9 +364,62 @@ plot_payment_distribution <- function(data, variable, title) {
     return(fig)
 }
 
+plot_cost_vs_duration <- function(fig_base, title) {
+    fig <- fig_base +
+        geom_point(aes(color = PotentialFraud)) +
+        scale_y_continuous('Claim amount', labels = label_dollar()) +
+        scale_color_discrete('Potential fraud') +
+        ggtitle(title)
+    print(fig)
+}
+
+plot_cost_per_day <- function(to_plot, variable_name, claim_type,
+                              duration_label) {
+
+    # Simplify code by creating a cost_per_day column equal to the column
+    # specified by variable_name.
+    to_plot <- to_plot %>%
+        mutate(cost_per_day = .data[[variable_name]])
+
+    title <- str_c('Cost per day of ', duration_label, ' duration, ',
+                   claim_type, ' visits')
+    axis_label <- str_c('Cost per day of ', duration_label, ' duration')
+    legend_title <- 'Potential fraud'
+    fig_base <- to_plot %>%
+        ggplot(aes(x = cost_per_day)) +
+        ylab('Number of claims') +
+        log_scale_dollar(axis_label, 'x') +
+        ggtitle(title)
+    plot_hist_with_freqpoly(fig_base, variable_name = 'PotentialFraud',
+                            legend_title = legend_title, bins = 60)
+
+    # Since the histograms show the same distribution to a high level of
+    # accuracy, use a qq plot to compare the distributions.
+    to_plot <- to_plot %>%
+        select(PotentialFraud, cost_per_day) %>%
+        mutate(cost_per_day = log10(cost_per_day + 1))
+    temp_data <- to_plot %>%
+        filter(PotentialFraud == 'No')
+    cost_per_day_no_fraud <- temp_data$cost_per_day %>%
+        as.numeric()
+
+    temp_data <- to_plot %>%
+        filter(PotentialFraud == 'Yes')
+    cost_per_day_yes_fraud <- temp_data$cost_per_day %>%
+        as.numeric()
+
+    title <- str_c('Q-Q plot, log(cost per day of ', duration_label,
+                   ' duration)')
+    qqplot(cost_per_day_no_fraud,
+           cost_per_day_yes_fraud,
+           xlab = 'No fraud',
+           ylab = 'Possible fraud',
+           main = title)
+}
+
 plot_fraction_original <- function(duplicates_data, claim_type) {
     to_plot <- duplicates_data %>%
-        filter(claim_type == !!claim_type) %>%
+        filter(claim_type == .env$claim_type) %>%
         filter_out_no_codes() %>%
         group_by(Provider, PotentialFraud) %>%
         summarise(
@@ -350,7 +432,8 @@ plot_fraction_original <- function(duplicates_data, claim_type) {
     title <- str_c('Percentage of claims by provider that are original, ',
                    claim_type, 's')
     x_axis_label <- 'Percentage of claims by provider that are original'
-    fig_base <- ggplot(to_plot, aes(x = fraction_original)) +
+    fig_base <- to_plot %>%
+        ggplot(aes(x = fraction_original)) +
         scale_x_continuous(x_axis_label,
                            labels = label_percent()) +
         ggtitle(title)
@@ -358,8 +441,8 @@ plot_fraction_original <- function(duplicates_data, claim_type) {
 
     title <- str_c('Number of claims vs percent that are original, ',
                    claim_type, 's')
-    fig <- ggplot(to_plot,
-                  aes(x = fraction_original, y = number_of_claims)) +
+    fig <- to_plot %>%
+        ggplot(aes(x = fraction_original, y = number_of_claims)) +
         geom_point(aes(color = PotentialFraud)) +
         ylab('Number of claims by provider') +
         scale_x_continuous(x_axis_label,

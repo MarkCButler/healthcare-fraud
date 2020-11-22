@@ -104,11 +104,12 @@ length(intersect(inpatient_doctors_vec, outpatient_doctors_vec))
 ```{r, chronic-1, cache=TRUE, echo=FALSE}
 for (claim_type in claim_types) {
     to_plot <- patients %>%
-        filter(claim_type == !!claim_type)
+        filter(claim_type == .env$claim_type)
     x_axis_values <- seq(min(to_plot$patient_claim_count),
                          max(to_plot$patient_claim_count))
     title <- str_c('Number of visits made by ', claim_type, 's')
-    fig <- ggplot(to_plot, aes(x = patient_claim_count)) +
+    fig <- to_plot %>%
+        ggplot(aes(x = patient_claim_count)) +
         geom_bar(fill = 'navyblue') +
         scale_x_discrete('Number of visits', limits = factor(x_axis_values)) +
         ylab('Number of patients') +
@@ -116,7 +117,7 @@ for (claim_type in claim_types) {
     print(fig)
 }
 
-plot_chron_cond_claim_counts(patients)
+plot_chronic_condition_claim_counts(patients)
 ```
 
 </div>
@@ -137,11 +138,12 @@ length(in_out_patients_vec)
 
 for (claim_type in claim_types) {
     to_plot <- doctors %>%
-        filter(claim_type == !!claim_type)
+        filter(claim_type == .env$claim_type)
     x_axis_values <- seq(min(to_plot$provider_count),
                          max(to_plot$provider_count))
     title <- str_c('Number of providers per doctor for ', claim_type, 's')
-    fig <- ggplot(to_plot, aes(x = provider_count)) +
+    fig <- to_plot %>%
+        ggplot(aes(x = provider_count)) +
         geom_bar(fill = 'navyblue') +
         scale_x_discrete('Number of providers',
                          limits = factor(x_axis_values)) +
@@ -152,11 +154,12 @@ for (claim_type in claim_types) {
 
 for (claim_type in claim_types) {
     to_plot <- patients %>%
-        filter(claim_type == !!claim_type)
+        filter(claim_type == .env$claim_type)
     x_axis_values <- seq(min(to_plot$provider_count),
                          max(to_plot$provider_count))
     title <- str_c('Number of providers per patient for ', claim_type, 's')
-    fig <- ggplot(to_plot, aes(x = provider_count)) +
+    fig <- to_plot %>%
+        ggplot(aes(x = provider_count)) +
         geom_bar(fill = 'navyblue') +
         scale_x_discrete('Number of providers',
                          limits = factor(x_axis_values)) +
@@ -167,7 +170,8 @@ for (claim_type in claim_types) {
 
 inpatient_providers_vec <- unique(inpatient_claims$Provider)
 outpatient_providers_vec <- unique(outpatient_claims$Provider)
-in_out_providers_vec <- intersect(inpatient_providers_vec, outpatient_providers_vec)
+in_out_providers_vec <- intersect(inpatient_providers_vec,
+                                  outpatient_providers_vec)
 length(inpatient_providers_vec)
 length(outpatient_providers_vec)
 length(in_out_providers_vec)
@@ -210,10 +214,11 @@ or the average charge per visit.
 ```{r, questions-2a, cache=TRUE}
 for (claim_type in claim_types) {
     to_plot <- claims %>%
-        filter(claim_type == !!claim_type) %>%
+        filter(claim_type == .env$claim_type) %>%
         mutate(patient_age = as.integer(round(patient_age)))
     title <- str_c('Number of visits by patient age, ', claim_type, 's')
-    fig <- ggplot(to_plot, aes(x = patient_age)) +
+    fig <- to_plot %>%
+        ggplot(aes(x = patient_age)) +
         geom_histogram(fill = 'navyblue', bins = 20) +
         ylab('Number of visits') +
         xlab('Patient age') +
@@ -229,33 +234,25 @@ for (claim_type in claim_types) {
 <div class="code-block">
 
 ```{r, chronic-2, cache=TRUE}
-for (column_name in chronic_conditions) {
-    condition_label <- chronic_condition_labels[column_name]
+for (variable_name in chronic_conditions) {
+    condition_label <- chronic_condition_labels[variable_name]
     legend_title <- first_char_to_upper(condition_label)
     condition_label <- str_replace_all(condition_label, '\n', ' ')
     for (claim_type in claim_types) {
         to_plot <- patients %>%
-            filter(claim_type == !!claim_type) %>%
+            filter(claim_type == .env$claim_type) %>%
             mutate(age = as.integer(round(age)))
 
         title <- str_c('Distribution of ', condition_label,
                        ' by age, ', claim_type, 's'
         )
-        fig <- to_plot %>%
+        fig_base <- to_plot %>%
             ggplot(aes(x = age)) +
-            geom_histogram(
-                aes_string(fill = column_name), position = 'identity',
-                bins = 20, alpha = 0.15
-            ) +
-            geom_freqpoly(
-                aes_string(color = column_name), position = 'identity',
-                bins = 20, size = 0.7
-            ) +
             ylab('Number of patients') +
             xlab('Patient age') +
-            labs(fill = legend_title, color = legend_title) +
             ggtitle(title)
-        print(fig)
+        plot_hist_with_freqpoly(fig_base, variable_name = variable_name,
+                                legend_title = legend_title, bins = 20)
     }
 }
 ```
@@ -269,15 +266,17 @@ for (column_name in chronic_conditions) {
 ```{r, questions-2b, cache=TRUE}
 for (claim_type in claim_types) {
     to_plot <- patients %>%
-        filter(claim_type == !!claim_type) %>%
+        filter(claim_type == .env$claim_type) %>%
         select(all_of(chronic_conditions))
     to_plot_vec <- colSums(to_plot == 'Y')
     vec_labels <- convert_to_labels(names(to_plot_vec)) %>%
         factor() %>%
         reorder(to_plot_vec)
-    to_plot <- data.frame(label = vec_labels, patient_claim_count = to_plot_vec)
+    to_plot <- data.frame(label = vec_labels,
+                          patient_claim_count = to_plot_vec)
     title <- str_c('Number of visits, ', claim_type, 's')
-    fig <- ggplot(to_plot, aes(x = label, y = patient_claim_count)) +
+    fig <- to_plot %>%
+        ggplot(aes(x = label, y = patient_claim_count)) +
         geom_col(aes(fill = label)) +
         xlab('Chronic condition') +
         ylab('Number of visits') +
@@ -344,12 +343,13 @@ valid_date_ranges <- list(
 
 for (claim_type in claim_types) {
     to_plot <- claims %>%
-        filter(claim_type == !!claim_type) %>%
+        filter(claim_type == .env$claim_type) %>%
         group_by(week_date) %>%
         summarise(count = n(), .groups = 'drop')
 
     title <- str_c('Weekly visit count, ', claim_type, 's')
-    fig <- ggplot(to_plot, aes(x = week_date, y = count)) +
+    fig <- to_plot %>%
+        ggplot(aes(x = week_date, y = count)) +
         geom_point(color = 'navyblue') +
         geom_line(color = 'navyblue') +
         xlab('Date') +
@@ -368,7 +368,7 @@ get_stl_model <- function(series_data) {
 for (claim_type in claim_types) {
     date_range <- valid_date_ranges[[claim_type]]
     to_plot <- claims %>%
-        filter(claim_type == !!claim_type) %>%
+        filter(claim_type == .env$claim_type) %>%
         extract_series_data(date_range)
 
     title <- str_c('Daily visit count, ', claim_type, 's')
@@ -388,8 +388,8 @@ for (claim_type in claim_types) {
     trend_curve <- trend(stl_model)
     trend_data <- data.frame(date = to_plot$ClaimStartDt, trend = trend_curve)
     title <- str_c('Trend in visit count, ', claim_type, 's')
-    fig <- ggplot(trend_data,
-                  aes(x = date, y = trend)) +
+    fig <- trend_data %>%
+        ggplot(aes(x = date, y = trend)) +
         geom_line(color = 'navyblue') +
         xlab('Date') +
         ylab('Number of visits') +
@@ -407,13 +407,13 @@ for (claim_type in claim_types) {
 ```{r, codes, cache=TRUE}
 for (claim_type in claim_types) {
     to_plot <- freq_admit_codes %>%
-        filter(claim_type == !!claim_type) %>%
+        filter(claim_type == .env$claim_type) %>%
         arrange(desc(count)) %>%
         mutate(description = reorder(description, count))
 
     title <- str_c('Top reasons for hospital visit, ', claim_type, 's')
-    fig <- ggplot(to_plot,
-                  aes(x = description, y = count, fill = description)) +
+    fig <- to_plot %>%
+        ggplot(aes(x = description, y = count, fill = description)) +
         geom_col() +
         xlab('Reason for visit') +
         ylab('Number of visits') +
@@ -426,10 +426,10 @@ for (claim_type in claim_types) {
 for (claim_type in claim_types) {
     date_range <- valid_date_ranges[[claim_type]]
     frequent_codes <- freq_admit_codes %>%
-        filter(claim_type == !!claim_type) %>%
+        filter(claim_type == .env$claim_type) %>%
         arrange(desc(count))
     claim_data <- claims %>%
-        filter(claim_type == !!claim_type,
+        filter(claim_type == .env$claim_type,
                ClmAdmitDiagnosisCode %in% frequent_codes$code)
 
     for (admit_code in frequent_codes$code) {
@@ -459,8 +459,9 @@ for (claim_type in claim_types) {
 
 <div class="code-block">
 
-```{r, duration, cache=TRUE}
-fig <- ggplot(inpatient_claims, aes(x = patient_age, y = visit_duration)) +
+```{r, visit-duration-1, cache=TRUE}
+fig <- inpatient_claims %>%
+    ggplot(aes(x = patient_age, y = visit_duration)) +
     geom_point(color = 'navyblue') +
     scale_x_continuous('Age') +
     scale_y_continuous('Visit duration') +
@@ -475,7 +476,8 @@ to_plot <- inpatient_claims %>%
     ) %>%
     mutate(across(all_of(chronic_conditions), ~ (.) == 'Y'))
 to_plot$number_of_conditions <- factor(rowSums(to_plot[, chronic_conditions]))
-fig <- ggplot(to_plot, aes(x = number_of_conditions, y = visit_duration)) +
+fig <- to_plot %>%
+    ggplot(aes(x = number_of_conditions, y = visit_duration)) +
     geom_boxplot(aes(fill = number_of_conditions)) +
     xlab('Number of chronic conditions') +
     scale_y_continuous('Visit duration') +
@@ -530,7 +532,7 @@ distribution patterns?
 ```{r, questions-4a, cache=TRUE}
 for (claim_type in claim_types) {
     to_plot <- claims %>%
-        filter(claim_type == !!claim_type) %>%
+        filter(claim_type == .env$claim_type) %>%
         select(visit_cost, InscClaimAmtReimbursed, DeductibleAmtPaid) %>%
         filter(visit_cost != 0) %>%
         mutate(percent_covered = InscClaimAmtReimbursed / visit_cost)
@@ -544,8 +546,8 @@ for (claim_type in claim_types) {
     print(fig)
 
     title <- str_c('Insurer payment vs deductible, ', claim_type, ' visits')
-    fig <- ggplot(to_plot,
-                  aes(x = DeductibleAmtPaid, y = InscClaimAmtReimbursed)) +
+    fig <- to_plot %>%
+        ggplot(aes(x = DeductibleAmtPaid, y = InscClaimAmtReimbursed)) +
         geom_point(color = 'navyblue') +
         log_scale_dollar('Deductible', 'x') +
         log_scale_dollar('Payment by insurer', 'y') +
@@ -553,7 +555,8 @@ for (claim_type in claim_types) {
     print(fig)
 
     title <- str_c('Percent covered by insurer, ', claim_type, ' visits')
-    fig <- ggplot(to_plot, aes(percent_covered)) +
+    fig <- to_plot %>%
+        ggplot(aes(percent_covered)) +
         geom_histogram(fill = 'navyblue', bins = 30) +
         scale_x_continuous('Percent covered by insurer',
                            labels = percent_format()) +
@@ -572,10 +575,11 @@ for (claim_type in claim_types) {
 ```{r, claim-duration, cache=TRUE}
 for (claim_type in claim_types) {
     to_plot <- providers %>%
-        filter(claim_type == !!claim_type)
+        filter(claim_type == .env$claim_type)
 
     title <- str_c('Mean claim duration by provider, ', claim_type, ' visits')
-    fig <- ggplot(to_plot, aes(x = PotentialFraud, y = mean_claim_duration)) +
+    fig <- to_plot %>%
+        ggplot(aes(x = PotentialFraud, y = mean_claim_duration)) +
         geom_boxplot(aes(fill = PotentialFraud)) +
         scale_y_continuous('Mean claim duration (days)') +
         xlab('Provider flagged for potential fraud') +
@@ -586,38 +590,74 @@ for (claim_type in claim_types) {
 
 for (claim_type in claim_types) {
     to_plot <- claims %>%
-        filter(claim_type == !!claim_type, visit_cost != 0) %>%
-        select(Provider, PotentialFraud, visit_cost, claim_duration) %>%
-        mutate(
-            claim_cost_per_day = visit_cost / as.numeric(claim_duration + 1)
-        )
+        filter(claim_type == .env$claim_type, visit_cost != 0) %>%
+        select(PotentialFraud, visit_cost, claim_duration, cost_per_claim_day)
 
     title <- str_c('Claim amount vs claim duration, ', claim_type, ' visits')
-    fig <- ggplot(to_plot, aes(x = claim_duration, y = visit_cost)) +
-        geom_point(aes(color = PotentialFraud)) +
-        scale_x_continuous('Claim duration (days)') +
-        scale_y_continuous('Claim amount', labels = label_dollar()) +
-        scale_color_discrete('Potential fraud') +
-        ggtitle(title)
-    print(fig)
+    fig_base <- to_plot %>%
+        ggplot(aes(x = claim_duration, y = visit_cost)) +
+        scale_x_continuous('Claim duration (days)')
+    plot_cost_vs_duration(fig_base, title)
 
-    legend_title <- 'Potential fraud'
-    fig <- to_plot %>%
-        ggplot(aes(x = claim_cost_per_day)) +
-        geom_histogram(
-            aes(fill = PotentialFraud), position = 'identity',
-            bins = 40, alpha = 0.15
-        ) +
-        geom_freqpoly(
-            aes(color = PotentialFraud), position = 'identity',
-            bins = 40, size = 0.7
-        ) +
-        ylab('Number of claims') +
-        log_scale_dollar('Cost per day', 'x') +
-        labs(fill = legend_title, color = legend_title) +
-        ggtitle(title)
-    print(fig)
+    plot_cost_per_day(to_plot, variable_name = 'cost_per_claim_day',
+                      claim_type = claim_type, duration_label = 'claim')
 }
+```
+
+</div>
+
+### Visit duration {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, visit-duration-2, cache=TRUE}
+to_plot <- inpatient_claims %>%
+    filter(visit_cost != 0) %>%
+    select(PotentialFraud, visit_cost, visit_duration, cost_per_visit_day,
+           claim_duration)
+
+    title <- str_c('Claim amount vs visit duration, inpatient visits')
+    fig_base <- to_plot %>%
+        ggplot(aes(x = visit_duration, y = visit_cost)) +
+        scale_x_continuous('Visit duration (days)')
+    plot_cost_vs_duration(fig_base, title)
+
+    plot_cost_per_day(to_plot, variable_name = 'cost_per_visit_day',
+                      claim_type = 'inpatient', duration_label = 'visit')
+
+to_plot <- to_plot %>%
+    mutate(duration_ratio = visit_duration / claim_duration)
+
+fig <- to_plot %>%
+    ggplot(aes(x = duration_ratio)) +
+    geom_histogram(fill = 'navyblue') +
+    ylab('Number of claims') +
+    xlab('Ratio (visit duration / claim_duration)') +
+    ggtitle('Ratio of visit_duration to claim duration')
+print(fig)
+
+to_plot <- to_plot %>%
+    select(-visit_cost, -cost_per_visit_day) %>%
+    pivot_longer(c(visit_duration, claim_duration),
+                 names_to = 'duration_type',
+                 values_to = 'duration')
+
+fig <- to_plot %>%
+    ggplot(aes(x = duration)) +
+    ylab('Number of claims') +
+    scale_x_discrete('Duration (days)') +
+    geom_bar(
+        aes(fill = duration_type), position = 'identity',
+        alpha = 0.15
+    ) +
+    geom_freqpoly(
+        aes(color = duration_type), position = 'identity',
+        stat = 'count', size = 0.7
+    ) +
+    labs(fill = '', color = '') +
+    ggtitle('Claim duration and visit duration for inpatients')
+print(fig)
+
 ```
 
 </div>
@@ -667,8 +707,8 @@ patient claims, flag the providers accordingly. Compare with the
 ```{r, questions-5a, cache=TRUE}
 to_plot <- filter_out_no_codes(inpatient_claims)
 title_count_identical <- 'Number of duplicates submitted for '
-fig_base <- ggplot(to_plot,
-                  aes(x = as.factor(identical_claim_count - 1))) +
+fig_base <- to_plot %>%
+    ggplot(aes(x = as.factor(identical_claim_count - 1))) +
         xlab('Number of duplicate claims submitted') +
         ggtitle(str_c(title_count_identical, 'inpatients'))
 plot_bar_charts(fig_base, 'claims')
@@ -685,15 +725,15 @@ to_plot <- to_plot %>%
     filter(identical_claim_count > 1)
 
 title_per_provider <- 'Number of claims per provider in identical groups, '
-fig_base <- ggplot(to_plot,
-              aes(x = as.factor(identical_claims_per_provider))) +
+fig_base <- to_plot %>%
+    ggplot(aes(x = as.factor(identical_claims_per_provider))) +
     xlab('Number of claims per provider') +
     ggtitle(str_c(title_per_provider, 'inpatients'))
 plot_bar_charts(fig_base, 'claims')
 
 to_plot <- filter_out_no_codes(outpatient_claims)
-fig_base <- ggplot(to_plot,
-              aes(x = identical_claim_count - 1)) +
+fig_base <- to_plot %>%
+    ggplot(aes(x = identical_claim_count - 1)) +
     scale_x_continuous('Number of duplicate claims submitted',
                        trans = pseudo_log_trans(base = 10),
                        breaks = c(0, 10, 100, 1e3, 1e4),
@@ -704,8 +744,8 @@ plot_histograms(fig_base, y_label = 'claims', bins = 20)
 to_plot <- to_plot %>%
     filter(identical_claim_count > 1)
 
-fig_base <- ggplot(to_plot,
-              aes(x = identical_claims_per_provider)) +
+fig_base <- to_plot %>%
+    ggplot(aes(x = identical_claims_per_provider)) +
     scale_x_continuous('Number of claims per provider',
                        breaks = seq(from = 1.0, to = 2.2, by = 0.2)) +
     ggtitle(str_c(title_per_provider, 'outpatients'))
