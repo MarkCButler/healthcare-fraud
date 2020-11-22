@@ -1,5 +1,5 @@
 ---
-title: 'Healthcare Fraud Detection'
+title: 'Analysis of Healthcare Data'
 output:
   html_document:
     code_folding: show
@@ -268,18 +268,25 @@ for (claim_type in claim_types) {
     to_plot <- patients %>%
         filter(claim_type == .env$claim_type) %>%
         select(all_of(chronic_conditions))
+    number_of_patients <- nrow(to_plot)
     to_plot_vec <- colSums(to_plot == 'Y')
     vec_labels <- convert_to_labels(names(to_plot_vec)) %>%
         factor() %>%
         reorder(to_plot_vec)
     to_plot <- data.frame(label = vec_labels,
-                          patient_claim_count = to_plot_vec)
-    title <- str_c('Number of visits, ', claim_type, 's')
+                          patient_count = to_plot_vec)
+    title <- str_c('Number of ', claim_type, 's with each chronic condition')
+    line_label <- str_c('Number of ', claim_type, 's\nin dataset')
     fig <- to_plot %>%
-        ggplot(aes(x = label, y = patient_claim_count)) +
+        ggplot(aes(x = label, y = patient_count)) +
         geom_col(aes(fill = label)) +
+        geom_hline(yintercept = number_of_patients,
+                   color = 'navyblue') +
         xlab('Chronic condition') +
-        ylab('Number of visits') +
+        scale_y_continuous('Number of patients',
+                           labels = label_comma(accuracy = 1)) +
+        annotate('text', x = 5.5, y = number_of_patients * 0.98,
+                 label = line_label, hjust = 'right') +
         coord_flip() +
         guides(fill = FALSE) +
         ggtitle(title)
@@ -295,6 +302,36 @@ for (claim_type in claim_types) {
 
 ```{r, payments, cache=TRUE}
 plot_payments(patients)
+```
+
+</div>
+
+### Chronic conditions {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, chronic-supp, cache=TRUE}
+for (claim_type in claim_types) {
+    to_plot <- patients %>%
+        filter(claim_type == .env$claim_type)
+
+    title <- str_c('Number of chronic conditions per ', claim_type)
+    fig <- to_plot %>%
+        ggplot(aes(x = condition_count)) +
+        geom_bar(fill = 'navyblue') +
+        xlab('Number of chronic conditions') +
+        ylab('Number of patients') +
+        ggtitle(title)
+    print(fig)
+
+    # Age vs mode number of chronic conditions, or maybe median, or maybe mode
+    # Number of patients with each chronic condition
+    # percent of the population with no chronic conditions as a function of age, binned
+    # Maybe color that first histogram by chronic condition, maybe order by cohdition frequency,
+    # so the biggest color bars appear at the top of the stack, but the ordering has to be
+    # done for the entire distribution, not per bar, of course.
+
+}
 ```
 
 </div>

@@ -404,6 +404,16 @@ augment_patient_data <- function(patient_data, claim_data, claim_counts) {
         mutate(across(all_of(chronic_conditions),
                       ~ fct_recode(factor(.), 'Y' = '1', 'N' = '2')))
 
+    condition_counts <- patient_data %>%
+        select(BeneID, all_of(chronic_conditions)) %>%
+        mutate(across(all_of(chronic_conditions),
+                      ~ (.) == 'Y')) %>%
+        rowwise(BeneID) %>%
+        summarise(
+            condition_count = sum(c_across(all_of(chronic_conditions))),
+            .groups = 'drop'
+        )
+
     provider_counts <- claim_data %>%
         select(Provider, BeneID) %>%
         distinct() %>%
@@ -444,7 +454,8 @@ augment_patient_data <- function(patient_data, claim_data, claim_counts) {
         left_join(payments, by = 'BeneID') %>%
         left_join(patient_ages, by = 'BeneID') %>%
         left_join(provider_counts, by = 'BeneID') %>%
-        left_join(claim_counts, by = 'BeneID')
+        left_join(claim_counts, by = 'BeneID') %>%
+        left_join(condition_counts, by = 'BeneID')
 
     return(patient_data)
 }
