@@ -13,7 +13,7 @@ editor_options:
   chunk_output_type: console
 ---
 
-```{js, echo = FALSE}
+```{js, echo=FALSE}
 // Add a picture to the top of the page.  JavaScript is used because the
 // formatting options for R markdown don't appear to allow an option to put
 // the image above the document title.
@@ -37,20 +37,30 @@ library(stlplus)
 library(stringr)
 library(tidyr)
 
+# nolint start
+# (using nolint to avoid a linter complaint about commented code)
+
 # With default settings, plots appear crowded, so insert additional space
 # below each plot.  This can be done by editing plot.margin in the theme
 # system.  The default margin can be found using the command:
 #
 # theme_get()$plot.margin
 #
-# This gives 5.5 for each side.  Increase the bottom margin.
-theme_update(plot.margin = margin(5.5, 5.5, 20, 5.5, 'pt'))
+# This gives 5.5 for each side.  Increase the top and bottom margins.
+theme_update(plot.margin = margin(12, 5.5, 12, 5.5, 'pt'))
+
+# nolint end
 ```
 
 ```{r, scripts, message=FALSE, echo=FALSE, cache=TRUE}
-source('globals.R')
+source('vectors.R')
 source('data_frames.R')
 source('plot.R')
+
+# Reorder the vector of chronic conditions.  Loops over this vector are used
+# to generate plots, so reordering the vector affects the order in which plots
+# are produced.
+chronic_conditions <- reorder_chronic_conditions(inpatients)
 ```
 
 # Summary
@@ -79,47 +89,81 @@ The training data was used for the analysis.  Details of the data frames:
   - Providers visited (2 columns:  provider ID and PotentialFraud label, 5,410
     rows)
 
+The patients in dataset appear to Medicare patients residing in the US and
+Africa.
+
 ## Scope {.unnumbered}
 
 The hospital visits in the dataset occurred throughout 2009 and were mainly
 limited to 2009.
 
-The hospital patients appear to be residents of the US.
+The healthcare market represented by the dataset appears to be Medicare
+patients, which include people who are 65 or older, certain younger people
+with disabilities, and people with end-stage renal disease or ALS (Lou
+Gehrig's disease).
 
-  - Each patient is identified with a state and county, both labeled by
-    numbers.  The state labels range from 1 to 54, which suggests that the
-    data is for US patients in the 50 states, together with the District of
-    Columbia and three US territories.
+  - The first clue leading to this conclusion is that for nearly all of the
+    inpatient visits, the deductible paid by the patient was $1068, the 2009
+    deductible for an inpatient visit covered by Medicare.  (About 2% of the
+    inpatient visits had NA for the deductible paid, but for all other
+    inpatient visits the deductible paid was $1068.)
+  - Consistent with the special treatment of end-stage renal disease by
+    Medicare, the csv table of patient info include a column of 0 and 1 values
+    with column heading "Renal Disease."  This column is among other columns
+    that identify a patient, such as birth date, gender and race.
+  - The column names NoOfMonths_PartACov, NoOfMonths_PartBCov in the table of
+    patients can also be understood in this context:  these columns likely
+    gives the number of months in 2009 the patient had coverage by Medicare
+    Part A and Medicare Part B, respectively.  (Each of these columns contains
+    integer values from 0 to 12.)
 
-The number of providers in the dataset (including both training and test data)
-is 6,763.  This is somewhat larger than the number of hospitals in the US in
-2009 (5,795).
+The hospital patients appear to be residents of the US and Africa.
 
-  - The American Hospital Association (AHA) provides statistics on hospitals
-    in the US.  Although the description of the dataset on Kaggle refers to
-    "hospital visits," it may be that not all healthcare providers visited met
-    the AHA definition of a hospital.
+  - Each patient is identified with a state and a county, both labeled by
+    integers (referred to here as codes).  There are 52 different state codes
+    ranging from 1 to 54.  The county codes are three-digit integers ranging
+    from 0 to 999.
+  - The state and county codes appear to be components of 5-digit SSA
+    (social-security administration) codes that identifies patient location.
+    For example, the dataset includes 156 patients with state code 49 and
+    county code 430, and these reside in Henrico County, Virginia (SSA code
+    49430).
+  - Several consistency support this conclusion.  For example, nearly all of
+    the <nobr>~ 3,000</nobr> combinations of state code and county code in the
+    dataset correspond to locations specified by a 5-digit SSA code.  Five US
+    states (AK, CA, IL, NH, VA) in the dataset included county codes that I
+    could not identify from the
+    [data](https://www.nber.org/research/data/ssa-federal-information-processing-series-fips-state-and-county-crosswalk)
+    published by the [National Bureau of Economic Research](https://www.nber.org/).
+  - For simplicity, I will use "SSA state code" to refer to the first two
+    digits of a 5-digit SSA code that identifies patient location.  Using this
+    terminology, SSA state codes 1 to 53 correspond to the 50 US states,
+    together with District of Columbia, Puerto Rico, and the US Virgin
+    Islands.  For example, state code 53 corresponds to Wyoming.
+  - SSA state codes above 53 are also defined:  for instance, 54 and 55 corresponds
+    to Africa and Asia, respectively.
+  - The SSA state codes in the dataset correspond to the 50 US states, together
+    with the District of Columbia and Africa.
+
+The number of healthcare providers in the dataset (including both training and
+test data) is 6,763.  This is somewhat larger than the
+[number of hospitals in the US in 2009](https://www.statista.com/statistics/185843/number-of-all-hospitals-in-the-us-since-2001/)
+(5,795).
+
+  - Is this apparent discrepancy due to the inclusion of Medicare patients
+    living in Africa?  The number of providers in the dataset visited only by
+    patients residing in Africa is 55.
+  - The statistics on hospitals in the US originate from the American Hospital
+    Association (AHA).  Although the description of the healthcare-fraud
+    dataset on Kaggle refers to "hospital visits," it may be that not all
+    healthcare providers visited met the AHA definition of a hospital.
 
 The dataset includes information for <nobr>~ 690,000</nobr> visits to a
 hospital (or similar healthcare provider), including <nobr>~ 50,000</nobr>
 inpatient visits and <nobr>~ 640,000</nobr> outpatient visits.  By way of
-comparison, the number of inpatient hospital visits in the US in 2018 was
-about 36 million.
-
-The data appears to be for Medicare patients, which include people who are 65
-or older, certain younger people with disabilities, and people with end-stage
-renal disease.
-
-  - The clue leading to this guess is that for nearly all of the inpatient visits,
-    the deductible paid by the patient was $1068, the 2009 deductible for an
-    inpatient visit covered by Medicare.  (About 2% of the inpatient visits
-    had NA for the deductible paid, but for all other inpatient visits the
-    deductible paid was $1068.)
-  - Consistent with the special treatment of end-stage renal disease by
-    Medicare, the dataframe of patient info include a column of 0 and 1 values
-    with column heading "Renal Disease."  This column is among other columns
-    that identify a patient, such as birth date, gender and race.
-
+comparison, the number of inpatient
+[hospital visits in the US in 2009](https://www.hcup-us.ahrq.gov/reports/factsandfigures/2009/pdfs/FF_report_2009.pdf)
+for which Medicare was the expected primary payer was 14.7 million.
 
 
 ## Data integrity {.unnumbered}
@@ -131,21 +175,21 @@ There is an apparent inconsistency in some outpatient visits:  the two
 features that report payments for a visit (DeductibleAmtPaid,
 InscClaimAmtReimbursed) are both equal to zero in some cases.
 
-  - This is the case for about 4% of the outpatient visits in the training
-    data, for instance.
+  - This is true for about 4% of the outpatient visits in the training data,
+    for instance.
   - Does zero payment indicate that payment was refused because fraud was
     suspected?  Apparently not, because the fraction of zero-payment rows
     labeled as PotentialFraud (36.1%) is quite close to the fraction for the
     full training set of outpatient visits (36.6%).
-  - It may be that in practice, hospitals receive zero payment for some
-    outpatient visits, e.g., because the costs associated with collecting
-    payment are too great to justify pursuing payment.  This could be
-    investigated by checking whether certain diagnosis or treatment codes are
-    associated with zero-payment visits.
+  - A possible explanation is that the dataset includes claims to Medicare
+    that were eventually covered by other insurers.
+  - Another possibility is that in practice, hospitals receive zero payment
+    for some outpatient visits, e.g., because the costs associated with
+    collecting payment are too great to justify pursuing payment.
 
-In most (or possibly all) cases, NA in the csv files can be viewed as
-artifacts of the way in which the data is presented, rather than valid data
-points that are missing.
+In most (or possibly all) cases, NA in the csv files can be viewed as an
+artifact of the way in which the data is presented, rather than an indication
+that a  valid data point is missing.
 
 Columns with NA:
 
@@ -155,26 +199,33 @@ Columns with NA:
      ClmDiagnosisCode_10 for claim diagnosis codes, and there are many NA in
      these columns.
 
-      - However, the presence of NA in these columns can be viewed as an
-        artifact of the table organization, rather than as valid data that is
-        not present.
+      - Most NA in these columns can be viewed as an artifact of the table
+        organization.
       - There are <nobr>~ 10,000</nobr> outpatient visits (but no inpatient
         visits) in the dataset that have NA for all code columns.
+      - Is it plausible that 1.5% of outpatient Medicare claims have no codes,
+        or is it more likely that the submitted codes are missing from the
+        dataset?  Further research would be needed to answer this question.
 
    2. Similarly, three columns are reserved for physicians associated with the
       visit:  AttendingPhysician, OperatingPhysician, OtherPhysician.
 
-      - Missing value in these columns can also be viewed as an artifact of
-        the table organization.
+      - Most NA in these columns can also be viewed as an artifact of the
+        table organization.
       - There are 135 inpatient visits and 1688 outpatient visits with NA in
         all three of these columns.
+      - Research questions:
+        - Is an outpatient hospital visit necessarily associated with a
+          physician?  For instance, a nurse practitioner may be able to fill
+          in for a physician for certain outpatient visits.
+        - Do certain combinations of codes tend to lack a physician?
 
   3. For about 2% of the inpatient visits (but not for any outpatient visits),
      DeductibleAmtPaid is NA.  As noted in the section on dataset scope, the
      deductible paid by inpatients was $1068 in all cases where it was not NA.
 
-     - These NA may correspond to visits for which the deductible payment was
-       zero.
+     - These NA probably correspond to visits for which the deductible payment
+       was zero, the patient had already paid the full deductible for the year.
      - However there are samples that have NA for DeductibleAmtPaid with
        InscClaimAmtReimbursed equal to zero.  For instance, there are 25 rows
        of this sort in the training data.
@@ -189,17 +240,146 @@ Columns with NA:
 Since the dataset appears to represent a set of visits covered by Medicare,
 it is expected that the patients are mainly elderly and that many have chronic
 health problems.  However, the frequency of some chronic conditions among
-these patients is quite high.
+these patients is quite high, and most patients have multiple chronic
+conditions.
 
-<div class="code-block">
+<div class="code-block" style="margin-top: 30px; margin-bottom: 30px;">
 
-```{r, summary, cache=TRUE, echo=FALSE}
-plot_patient_conditions(inpatients, 'inpatient', large_top_margin = TRUE)
+```{r, chronic-summary-1, echo=FALSE, cache=TRUE}
+plot_number_of_conditions(patients, 'inpatient')
+plot_chronic_count(patients, 'inpatient')
+plot_chronic_percent(patients_concatenated, chronic_conditions[1])
 ```
 
 </div>
 
-### Discussion {.unnumbered}
+Chronic conditions are widespread even among the Medicare patients who are not
+elderly.  In the plot below, the patients under the age of 65 are disabled or
+have a disease with special Medicare coverage (ALS or kidney failure).
+
+<div class="summary-code-block">
+
+```{r, chronic-summary-2, echo=FALSE, cache=TRUE}
+plot_chronic_by_age(patients, chronic_conditions[1], 'inpatient')
+```
+
+</div>
+
+The chronic conditions are widespread among the Medicare patients in all 50 US
+states as well as in Africa.
+
+<div class="summary-code-block">
+
+```{r, chronic-summary-3, fig.height=10, echo=FALSE, cache=TRUE}
+plot_chronic_by_location(patients, chronic_conditions[1], 'inpatient')
+```
+
+</div>
+
+### Number of conditions per patient {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r show-number-conditions, ref.label='number-conditions', eval=FALSE}
+```
+
+```{r, number-conditions, echo=FALSE, cache=TRUE}
+for (claim_type in claim_types) {
+    plot_number_of_conditions(patients, claim_type)
+}
+```
+
+</div>
+
+
+### Number of patients with condition {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r show-number-patients, ref.label='number-patients', eval=FALSE}
+```
+
+```{r, number-patients, echo=FALSE, cache=TRUE}
+plot_chronic_count(patients, 'inpatient')
+plot_chronic_count(patients, 'outpatient')
+```
+
+</div>
+
+### Percentage of patients with condition {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, chronic-percent, cache=TRUE}
+for (variable_name in chronic_conditions) {
+    plot_chronic_percent(patients_concatenated, variable_name)
+}
+```
+
+</div>
+
+### Patient age {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, show-chronic-age, ref.label='chronic-age', eval=FALSE}
+```
+
+```{r, chronic-age, echo=FALSE, cache=TRUE}
+for (claim_type in claim_types) {
+    plot_patient_age(patients, claim_type)
+}
+
+for (variable_name in chronic_conditions) {
+    plot_chronic_by_age(patients, variable_name)
+}
+```
+
+</div>
+
+### Visits per patient {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, show-visits-per-patient, ref.label='visits-per-patient', eval=FALSE}
+```
+
+```{r, visits-per-patient, echo=FALSE, cache=TRUE}
+for (claim_type in claim_types) {
+    to_plot <- patients[[claim_type]]
+    x_axis_values <- seq(min(to_plot$patient_claim_count),
+                         max(to_plot$patient_claim_count))
+    title <- str_c('Number of visits made by ', claim_type, 's')
+    fig <- to_plot %>%
+        ggplot(aes(x = patient_claim_count)) +
+        geom_bar(fill = 'navyblue') +
+        scale_x_discrete('Number of visits', limits = factor(x_axis_values)) +
+        ylab('Number of patients') +
+        ggtitle(title)
+    print(fig)
+}
+
+for (variable_name in chronic_conditions) {
+    plot_visits_per_patient(patients, variable_name)
+}
+```
+
+</div>
+
+### Geographic location {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, show-chronic-location, ref.label='chronic-location', eval=FALSE}
+```
+
+```{r, chronic-location, fig.height=10, echo=FALSE, cache=TRUE}
+for (variable_name in chronic_conditions) {
+    plot_chronic_by_location(patients, variable_name)
+}
+```
+
+</div>
 
 ## Questions 1 {.tabset}
 
@@ -251,33 +431,6 @@ length(intersect(inpatient_doctors_vec, outpatient_doctors_vec))
 
 </div>
 
-### Chronic conditions {.tab-display .unnumbered}
-
-<div class="code-block">
-
-```{r, show-chronic, ref.label='chronic-1', eval=FALSE}
-```
-
-```{r, chronic-1, cache=TRUE, echo=FALSE}
-for (claim_type in claim_types) {
-    to_plot <- patients %>%
-        filter(claim_type == .env$claim_type)
-    x_axis_values <- seq(min(to_plot$patient_claim_count),
-                         max(to_plot$patient_claim_count))
-    title <- str_c('Number of visits made by ', claim_type, 's')
-    fig <- to_plot %>%
-        ggplot(aes(x = patient_claim_count)) +
-        geom_bar(fill = 'navyblue') +
-        scale_x_discrete('Number of visits', limits = factor(x_axis_values)) +
-        ylab('Number of patients') +
-        ggtitle(title)
-    print(fig)
-}
-
-plot_chronic_condition_claim_counts(patients)
-```
-
-</div>
 
 ### Answers {.tab-display .unnumbered}
 
@@ -294,8 +447,7 @@ in_out_patients_vec <- intersect(inpatients_vec, outpatients_vec)
 length(in_out_patients_vec)
 
 for (claim_type in claim_types) {
-    to_plot <- doctors %>%
-        filter(claim_type == .env$claim_type)
+    to_plot <- doctors[[claim_type]]
     x_axis_values <- seq(min(to_plot$provider_count),
                          max(to_plot$provider_count))
     title <- str_c('Number of providers per doctor for ', claim_type, 's')
@@ -310,8 +462,7 @@ for (claim_type in claim_types) {
 }
 
 for (claim_type in claim_types) {
-    to_plot <- patients %>%
-        filter(claim_type == .env$claim_type)
+    to_plot <- patients[[claim_type]]
     x_axis_values <- seq(min(to_plot$provider_count),
                          max(to_plot$provider_count))
     title <- str_c('Number of providers per patient for ', claim_type, 's')
@@ -364,68 +515,10 @@ deductibles are flowing to the providers. Based on this, analyze which types
 of patients contribute more to the providers in terms of the aggregate charges
 or the average charge per visit.
 
-### Answers {.tab-display .unnumbered}
 
-<div class="code-block">
+### Consumption of resources {.unnumbered}
 
-```{r, questions-2a, cache=TRUE}
-for (claim_type in claim_types) {
-    to_plot <- claims %>%
-        filter(claim_type == .env$claim_type) %>%
-        mutate(patient_age = as.integer(round(patient_age)))
-    title <- str_c('Number of visits by patient age, ', claim_type, 's')
-    fig <- to_plot %>%
-        ggplot(aes(x = patient_age)) +
-        geom_histogram(fill = 'navyblue', bins = 20) +
-        ylab('Number of visits') +
-        xlab('Patient age') +
-        ggtitle(title)
-    print(fig)
-}
-```
-
-</div>
-
-### Chronic conditions {.tab-display .unnumbered}
-
-<div class="code-block">
-
-```{r, chronic-2, cache=TRUE}
-for (variable_name in chronic_conditions) {
-    condition_label <- chronic_condition_labels[variable_name]
-    legend_title <- first_char_to_upper(condition_label)
-    condition_label <- str_replace_all(condition_label, '\n', ' ')
-    for (claim_type in claim_types) {
-        to_plot <- patients %>%
-            filter(claim_type == .env$claim_type) %>%
-            mutate(age = as.integer(round(age)))
-
-        title <- str_c('Distribution of ', condition_label,
-                       ' by age, ', claim_type, 's'
-        )
-        fig_base <- to_plot %>%
-            ggplot(aes(x = age)) +
-            ylab('Number of patients') +
-            xlab('Patient age') +
-            ggtitle(title)
-        plot_hist_with_freqpoly(fig_base, variable_name = variable_name,
-                                legend_title = legend_title, bins = 20)
-    }
-}
-```
-
-</div>
-
-### Number of visits {.tab-display .unnumbered}
-
-<div class="code-block">
-
-```{r, questions-2b, cache=TRUE}
-plot_patient_conditions(inpatients, 'inpatient')
-plot_patient_conditions(outpatients, 'outpatient')
-```
-
-</div>
+The original question was about how many resources are consumed by different classes of patients.  That could still be interesting to include.
 
 ### Payments {.tab-display .unnumbered}
 
@@ -433,36 +526,6 @@ plot_patient_conditions(outpatients, 'outpatient')
 
 ```{r, payments, cache=TRUE}
 plot_payments(patients)
-```
-
-</div>
-
-### Chronic conditions {.tab-display .unnumbered}
-
-<div class="code-block">
-
-```{r, chronic-supp, cache=TRUE}
-for (claim_type in claim_types) {
-    to_plot <- patients %>%
-        filter(claim_type == .env$claim_type)
-
-    title <- str_c('Number of chronic conditions per ', claim_type)
-    fig <- to_plot %>%
-        ggplot(aes(x = condition_count)) +
-        geom_bar(fill = 'navyblue') +
-        xlab('Number of chronic conditions') +
-        ylab('Number of patients') +
-        ggtitle(title)
-    print(fig)
-
-    # Age vs mode number of chronic conditions, or maybe median, or maybe mode
-    # Number of patients with each chronic condition
-    # percent of the population with no chronic conditions as a function of age, binned
-    # Maybe color that first histogram by chronic condition, maybe order by cohdition frequency,
-    # so the biggest color bars appear at the top of the stack, but the ordering has to be
-    # done for the entire distribution, not per bar, of course.
-
-}
 ```
 
 </div>
@@ -510,8 +573,7 @@ valid_date_ranges <- list(
 )
 
 for (claim_type in claim_types) {
-    to_plot <- claims %>%
-        filter(claim_type == .env$claim_type) %>%
+    to_plot <- claims[[claim_type]] %>%
         group_by(week_date) %>%
         summarise(count = n(), .groups = 'drop')
 
@@ -535,8 +597,7 @@ get_stl_model <- function(series_data) {
 
 for (claim_type in claim_types) {
     date_range <- valid_date_ranges[[claim_type]]
-    to_plot <- claims %>%
-        filter(claim_type == .env$claim_type) %>%
+    to_plot <- claims[[claim_type]] %>%
         extract_series_data(date_range)
 
     title <- str_c('Daily visit count, ', claim_type, 's')
@@ -574,8 +635,7 @@ for (claim_type in claim_types) {
 
 ```{r, codes, cache=TRUE}
 for (claim_type in claim_types) {
-    to_plot <- freq_admit_codes %>%
-        filter(claim_type == .env$claim_type) %>%
+    to_plot <- freq_admit_codes[[claim_type]] %>%
         arrange(desc(count)) %>%
         mutate(description = reorder(description, count))
 
@@ -593,12 +653,10 @@ for (claim_type in claim_types) {
 
 for (claim_type in claim_types) {
     date_range <- valid_date_ranges[[claim_type]]
-    frequent_codes <- freq_admit_codes %>%
-        filter(claim_type == .env$claim_type) %>%
+    frequent_codes <- freq_admit_codes[[claim_type]] %>%
         arrange(desc(count))
-    claim_data <- claims %>%
-        filter(claim_type == .env$claim_type,
-               ClmAdmitDiagnosisCode %in% frequent_codes$code)
+    claim_data <- claims[[claim_type]] %>%
+        filter(ClmAdmitDiagnosisCode %in% frequent_codes$code)
 
     for (admit_code in frequent_codes$code) {
         description <- code_descriptions[admit_code]
@@ -663,7 +721,7 @@ print(fig)
 ```{r, show-claim-counts, ref.label='claim-counts', eval=FALSE}
 ```
 
-```{r, claim-counts, cache=TRUE, echo=FALSE}
+```{r, claim-counts, echo=FALSE, cache=TRUE}
 plot_provider_claim_counts(provider_claim_counts, 'inpatient')
 plot_provider_claim_counts(provider_claim_counts, 'outpatient')
 ```
@@ -699,8 +757,7 @@ distribution patterns?
 
 ```{r, questions-4a, cache=TRUE}
 for (claim_type in claim_types) {
-    to_plot <- claims %>%
-        filter(claim_type == .env$claim_type) %>%
+    to_plot <- claims[[claim_type]] %>%
         select(visit_cost, InscClaimAmtReimbursed, DeductibleAmtPaid) %>%
         filter(visit_cost != 0) %>%
         mutate(percent_covered = InscClaimAmtReimbursed / visit_cost)
@@ -742,11 +799,8 @@ for (claim_type in claim_types) {
 
 ```{r, claim-duration, cache=TRUE}
 for (claim_type in claim_types) {
-    to_plot <- providers %>%
-        filter(claim_type == .env$claim_type)
-
     title <- str_c('Mean claim duration by provider, ', claim_type, ' visits')
-    fig <- to_plot %>%
+    fig <- providers[[claim_type]] %>%
         ggplot(aes(x = PotentialFraud, y = mean_claim_duration)) +
         geom_boxplot(aes(fill = PotentialFraud)) +
         scale_y_continuous('Mean claim duration (days)') +
@@ -757,8 +811,8 @@ for (claim_type in claim_types) {
 }
 
 for (claim_type in claim_types) {
-    to_plot <- claims %>%
-        filter(claim_type == .env$claim_type, visit_cost != 0) %>%
+    to_plot <- claims[[claim_type]] %>%
+        filter(visit_cost != 0) %>%
         select(PotentialFraud, visit_cost, claim_duration, cost_per_claim_day)
 
     title <- str_c('Claim amount vs claim duration, ', claim_type, ' visits')
@@ -933,8 +987,8 @@ message <- str_c(
     'percent of a provider\'s\nclaims that are "original."'
 )
 cat(message)
-plot_fraction_original(inpatient_claims, 'inpatient')
-plot_fraction_original(outpatient_claims, 'outpatient')
+plot_fraction_original(claims, 'inpatient')
+plot_fraction_original(claims, 'outpatient')
 ```
 </div>
 
