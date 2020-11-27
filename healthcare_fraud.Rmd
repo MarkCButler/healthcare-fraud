@@ -165,6 +165,11 @@ comparison, the number of inpatient
 [hospital visits in the US in 2009](https://www.hcup-us.ahrq.gov/reports/factsandfigures/2009/pdfs/FF_report_2009.pdf)
 for which Medicare was the expected primary payer was 14.7 million.
 
+The number of patients in the dataset is <nobr>~ 150,000</nobr>, compared to
+<nobr>~ 46 million</nobr> people
+[enrolled for Medicare coverage in
+2009](https://www.cms.gov/Research-Statistics-Data-and-Systems/Statistics-Trends-and-Reports/CMS-Statistics-Reference-Booklet/Downloads/CMS_Stats_2009.pdf).
+
 
 ## Data integrity {.unnumbered}
 
@@ -380,6 +385,50 @@ for (variable_name in chronic_conditions) {
 ```
 
 </div>
+
+## Reason for hospital visit
+
+The data on hospital visits includes a column ClmAdmitDiagnosisCode that gives
+the diagnosis at the time the patient was admitted.  This code can be roughly
+identified as the reason for the hospital visit.
+
+The top five reasons for inpatient visits:
+
+  1. Chest pain
+  2. Shortness of breath
+  3. Pneumonia
+  4. Congestive heart failure (insufficient blood flow)
+  5. Syncope (fainting or "passing out")
+
+The top five reasons for outpatient visits:
+
+  1. Mammogram
+  2. Atrial fibrillation (irregular heartbeat)
+  3. High blood pressure
+  4. Diabetes
+  5. Monitoring of therapeutic drugs
+
+
+<div class="summary-code-block">
+
+```{r, visit-reason-in, echo=FALSE, cache=TRUE}
+plot_top_visit_reasons(freq_admit_codes, 'inpatient')
+```
+
+</div>
+
+
+<div class="summary-code-block">
+
+```{r, visit-reason-out, echo=FALSE, cache=TRUE}
+plot_top_visit_reasons(freq_admit_codes, 'outpatient')
+```
+
+</div>
+
+## Consumption of Resources {.tabset}
+
+### Summary {.unnumbered}
 
 ## Questions 1 {.tabset}
 
@@ -634,23 +683,6 @@ for (claim_type in claim_types) {
 <div class="code-block">
 
 ```{r, codes, cache=TRUE}
-for (claim_type in claim_types) {
-    to_plot <- freq_admit_codes[[claim_type]] %>%
-        arrange(desc(count)) %>%
-        mutate(description = reorder(description, count))
-
-    title <- str_c('Top reasons for hospital visit, ', claim_type, 's')
-    fig <- to_plot %>%
-        ggplot(aes(x = description, y = count, fill = description)) +
-        geom_col() +
-        xlab('Reason for visit') +
-        ylab('Number of visits') +
-        coord_flip() +
-        guides(fill = FALSE) +
-        ggtitle(title)
-    print(fig)
-}
-
 for (claim_type in claim_types) {
     date_range <- valid_date_ranges[[claim_type]]
     frequent_codes <- freq_admit_codes[[claim_type]] %>%

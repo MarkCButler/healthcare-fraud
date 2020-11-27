@@ -408,6 +408,24 @@ plot_visits_per_patient <- function(patient_data, variable_name,
     invisible(fig)
 }
 
+plot_top_visit_reasons <- function(admit_codes, claim_type) {
+    to_plot <- admit_codes[[claim_type]] %>%
+        arrange(desc(count)) %>%
+        mutate(description = reorder(description, count))
+
+    title <- str_c('Top reasons for hospital visit, ', claim_type, 's')
+    fig <- to_plot %>%
+        ggplot(aes(x = description, y = count, fill = description)) +
+        geom_col() +
+        xlab('Reason for visit') +
+        ylab('Number of visits') +
+        coord_flip() +
+        guides(fill = FALSE) +
+        ggtitle(title)
+    print(fig)
+    invisible(fig)
+}
+
 plot_payments <- function(patient_data, claim_types = NULL) {
     to_select <- c(payment_variables, chronic_conditions)
     if (is.null(claim_types)) {
