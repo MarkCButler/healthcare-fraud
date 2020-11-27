@@ -2,6 +2,7 @@
 
 library(dplyr)
 library(DT)
+library(forcats)
 library(ggplot2)
 library(lubridate)
 library(scales)
@@ -9,26 +10,12 @@ library(stlplus)
 library(stringr)
 library(tidyr)
 
-source('globals.R')
+source('vectors.R')
 
 
 #############################################################################
 # Format plot/legend labels for chronic conditions.
 #############################################################################
-
-chronic_condition_labels <- case_when(
-    str_detect(chronic_conditions, 'Alzheimer') ~ 'Alzheimer\'s disease',
-    str_detect(chronic_conditions, 'HeartFailure') ~ 'heart failure',
-    str_detect(chronic_conditions, 'KidneyDisease') ~ 'kidney disease',
-    str_detect(chronic_conditions,
-               'IschemicHeart') ~ 'coronary\nheart\ndisease',
-    str_detect(chronic_conditions,
-               'ObstrPulmonary') ~ 'obstructive\npulmonary\ndisease',
-    str_detect(chronic_conditions,
-               'RheumatoidArthritis') ~ 'rheumatoid arthritis',
-    TRUE ~ tolower(chronic_conditions)
-)
-names(chronic_condition_labels) <- chronic_conditions
 
 first_char_to_upper <- function(label) {
     first_char <- str_sub(label, 1, 1)
@@ -36,34 +23,57 @@ first_char_to_upper <- function(label) {
     return(label)
 }
 
-# The input to this function is a vector of strings that specify a chronic
-# condition.  The strings in the vector are column names such as
+format_chronic_condition <- function(condition_vec) {
+    formatted <- chronic_condition_labels[condition_vec]   %>%
+        first_char_to_upper()
+    return(formatted)
+}
+
+# The input to this function is a vector of strings that each specify a
+# chronic condition.  The strings in the vector are column names such as
 # 'IschemicHeart'.  The vector returned by the function has strings that work
 # better in labelling the y axis of a plot, e.g., 'IschemicHeart' has been
-# replaced by 'Ischemic heart'.
-convert_to_labels <- function(condition_vec) {
-    labels <- chronic_condition_labels[condition_vec] %>%
-        first_char_to_upper() %>%
+# replaced by 'Coronary\nheart disease'.
+condition_to_axis_label <- function(condition_vec) {
+    labels <- condition_vec %>%
+        format_chronic_condition() %>%
         # Replace only the first newline (in cases where 2 newlines are used
         # in legend titles), so that very long labels still include a newline.
         str_replace('\n', ' ')
     return(labels)
 }
 
+# The next two functions are similar to condition_to_axis_label, but they
+# perform formatting needed for different parts of a plot.
+
+# 'IschemicHeart' is converted to 'Coronary\nheart\ndisease'
+condition_to_legend_title <- function(variable_name) {
+    return(format_chronic_condition(variable_name))
+}
+
+# 'IschemicHeart' is converted to 'Coronary heart disease'
+condition_to_plot_title <- function(variable_name) {
+    title <- chronic_condition_labels[variable_name] %>%
+        str_replace_all('\n', ' ')
+    return(title)
+}
 
 #############################################################################
-# Labels for payment variables.
+# Reorder the labels for chronic conditions
 #############################################################################
 
-payment_variables <- c('total_reimbursed', 'reimbursed_per_visit',
-                      'total_cost_of_claims', 'claim_cost_per_visit')
-payment_labels <- c(
-    'Total payment by insurance per patient',
-    'Mean payment by insurance per patient per visit',
-    'Total paid to hospitals per patient',
-    'Mean paid to hospital per patient per visit'
-)
-names(payment_labels) <- payment_variables
+# The variable chronic_conditions is defined in globals.R.  Order the
+# conditions based on decreasing frequency of the condition among inpatients.
+# This will be the default order used in loops that generate one plot for each
+# chronic condition.  (Inpatients are used to define the default order because
+# inpatient percentages are higher and therefore stand out more.)
+reorder_chronic_conditions <- function(patient_data) {
+    patient_data <- patient_data %>%
+        select(all_of(chronic_conditions))
+    patient_data <- colSums(patient_data == 'Y') %>%
+        sort(decreasing = TRUE)
+    return(names(patient_data))
+}
 
 
 #############################################################################
@@ -81,13 +91,13 @@ generate_condition_column <- function(data) {
         filter(value == 'Y') %>%
         select(-value) %>%
         # Modify the conditions names to improve plot readability.
-        mutate(condition = convert_to_labels(condition))
+        mutate(condition = condition_to_axis_label(condition))
     return(data)
 }
 
 
 #############################################################################
-# Format plot axes, top margin.
+# Format plot axes.
 #############################################################################
 
 # Function log_scale_dollar is used to avoid repeated verbose calls involving
@@ -108,17 +118,6 @@ log_scale_dollar <- function(axis_label, axis) {
     } else {
         stop('Argument "axis" must be "x" or "y".')
     }
-}
-
-# Add space to the top margin of a plot.  Note that for all plots, the bottom
-# margin is increased from 5.5 points to 20 points, in order to avoid a
-# cluttered appearance in the rendered output.  In cases where echoed code is
-# not displayed above a plot or a series of plots, the top margin is also
-# increased to 20 points.
-add_to_top_margin <- function(fig) {
-    fig <- fig +
-        theme(plot.margin = margin(20, 5.5, 20, 5.5, 'pt'))
-    return(fig)
 }
 
 
@@ -148,6 +147,7 @@ plot_bar_charts <- function(fig_base, y_label, geom_func = geom_bar) {
                            labels = label_percent()) +
         scale_fill_discrete('Potential fraud')
     print(fig)
+    invisible(fig)
 }
 
 # Plot a histogram in two formats.
@@ -173,6 +173,7 @@ plot_histograms <- function(fig_base, y_label, bins,
     # as a bug.  The warning can be eliminated from the markdown output with
     # suppressWarnings.
     suppressWarnings(print(fig))
+    invisible(fig)
 }
 
 
@@ -194,6 +195,7 @@ plot_hist_with_freqpoly <- function(fig_base, variable_name,
         ) +
         labs(fill = legend_title, color = legend_title)
     print(fig)
+    invisible(fig)
 }
 
 
@@ -250,13 +252,24 @@ plot_seasonality <- function(series_data, stl_model, title) {
 # These functions are defined in order to simplify the R markdown file.
 #############################################################################
 
-plot_patient_conditions <- function(patient_data, claim_type,
-                                    large_top_margin = FALSE) {
-    to_plot <- patient_data %>%
+plot_number_of_conditions <- function(patient_data, claim_type) {
+    title <- str_c('Number of chronic conditions per ', claim_type)
+    fig <- patient_data[[claim_type]] %>%
+        ggplot(aes(x = condition_count)) +
+        geom_bar(fill = 'navyblue') +
+        xlab('Number of chronic conditions') +
+        ylab('Number of patients') +
+        ggtitle(title)
+    print(fig)
+    invisible(fig)
+}
+
+plot_chronic_count <- function(patient_data, claim_type) {
+    to_plot <- patient_data[[claim_type]] %>%
         select(all_of(chronic_conditions))
     number_of_patients <- nrow(to_plot)
     to_plot_vec <- colSums(to_plot == 'Y')
-    vec_labels <- convert_to_labels(names(to_plot_vec)) %>%
+    vec_labels <- condition_to_axis_label(names(to_plot_vec)) %>%
         factor() %>%
         reorder(to_plot_vec)
     to_plot <- data.frame(label = vec_labels,
@@ -276,59 +289,142 @@ plot_patient_conditions <- function(patient_data, claim_type,
         coord_flip() +
         guides(fill = FALSE) +
         ggtitle(title)
-    if (large_top_margin) {
-        fig <- add_to_top_margin(fig)
-    }
     print(fig)
+    invisible(fig)
 }
 
-plot_chronic_condition_claim_counts <- function(patients) {
-    for (variable_name in chronic_conditions) {
-        condition_label <- chronic_condition_labels[variable_name]
-        legend_title <- first_char_to_upper(condition_label)
-        condition_label <- str_replace_all(condition_label, '\n', ' ')
-        title_base <- str_c('Distribution of ', condition_label)
+plot_chronic_percent <- function(patient_data, variable_name) {
+    legend_title <- condition_to_legend_title(variable_name)
+    title <- str_c('Distribution of ',
+                   condition_to_plot_title(variable_name))
 
-        fig <- patients %>%
-            ggplot(aes_string(x = 'claim_type', fill = variable_name)) +
-            geom_bar(position = 'fill') +
+    fig <- patient_data %>%
+        ggplot(aes_string(x = 'claim_type', fill = variable_name)) +
+        geom_bar(position = 'fill') +
+        scale_y_continuous('Percentage of patients',
+                           labels = label_percent()) +
+        scale_x_discrete(name = '') +
+        scale_fill_discrete(legend_title) +
+        ggtitle(title)
+    print(fig)
+    invisible(fig)
+}
+
+plot_chronic_by_age <- function(patient_data, variable_name,
+                                claim_types = NULL) {
+    legend_title <- condition_to_legend_title(variable_name)
+    title_base <- condition_to_plot_title(variable_name)
+    if (is.null(claim_types)) {
+        claim_types <- sort(names(patient_data))
+    }
+    for (claim_type in claim_types) {
+        fig_base <- patient_data[[claim_type]] %>%
+            ggplot(aes(x = age)) +
+            xlab('Patient age')
+
+        title <- str_c('Number of ', claim_type, 's with ', title_base,
+                       ' by age')
+        fig <- fig_base +
+            ylab('Number of patients') +
+            ggtitle(title)
+        plot_hist_with_freqpoly(fig, variable_name = variable_name,
+                                legend_title = legend_title, bins = 20)
+
+        title <- str_c('Percentage of ', claim_type, 's with ', title_base,
+                       ' by age')
+        fig <- fig_base +
+            geom_histogram(aes_string(fill = variable_name),
+                           position = 'fill',
+                           bins = 20) +
             scale_y_continuous('Percentage of patients',
                                labels = label_percent()) +
-            scale_x_discrete(name = '') +
-            scale_fill_discrete(legend_title) +
-            ggtitle(title_base)
+            labs(fill = legend_title) +
+            ggtitle(title)
         print(fig)
-
-        for (claim_type in claim_types) {
-            to_plot <- patients %>%
-                filter(claim_type == .env$claim_type)
-            x_axis_values <- seq(min(to_plot$patient_claim_count),
-                                 max(to_plot$patient_claim_count))
-            title <- str_c(title_base, ', ', claim_type, 's')
-            fig <- to_plot %>%
-                ggplot(aes_string(x = 'patient_claim_count',
-                                  fill = variable_name)) +
-                geom_bar(position = 'fill') +
-                scale_x_discrete('Number of visits',
-                                 limits = factor(x_axis_values)) +
-                scale_fill_discrete(legend_title) +
-                ylab('Number of patients') +
-                ggtitle(title)
-            print(fig)
-        }
     }
+    invisible(fig)
 }
 
-plot_payments <- function(patients) {
+plot_chronic_by_location <- function(patient_data, variable_name,
+                                  claim_types = NULL) {
+    legend_title <- condition_to_legend_title(variable_name)
+    title_base <- condition_to_plot_title(variable_name)
+    if (is.null(claim_types)) {
+        claim_types <- sort(names(patient_data))
+    }
     for (claim_type in claim_types) {
-        to_select <- c(payment_variables, chronic_conditions)
-        to_plot <- patients %>%
-            filter(claim_type == .env$claim_type) %>%
+        title <- str_c('Distribtion of ', title_base, ' by location, ',
+                       claim_type, 's')
+        fig <- patient_data[[claim_type]] %>%
+            ggplot(aes(x = fct_rev(state_name))) +
+            geom_bar(aes_string(fill = variable_name), position = 'fill') +
+            scale_y_continuous('Percentage of patients',
+                               labels = label_percent()) +
+            labs(x = 'Geographic location', fill = legend_title) +
+            coord_flip() +
+            ggtitle(title)
+        print(fig)
+    }
+    invisible(fig)
+}
+
+plot_patient_age <- function(patient_data, claim_type) {
+    title <- str_c('Distribution of ', claim_type, ' age')
+    fig <- patient_data[[claim_type]] %>%
+        ggplot(aes(x = age)) +
+        geom_histogram(fill = 'navyblue', bins = 20) +
+        ylab('Number of patients') +
+        xlab('Patient age') +
+        ggtitle(title)
+    print(fig)
+    invisible(fig)
+}
+
+plot_visits_per_patient <- function(patient_data, variable_name,
+                                    claim_types = NULL) {
+    legend_title <- condition_to_legend_title(variable_name)
+    title_base <- str_c('Distribution of ',
+                        condition_to_plot_title(variable_name))
+    if (is.null(claim_types)) {
+        claim_types <- sort(names(patient_data))
+    }
+    for (claim_type in claim_types) {
+        to_plot <- patient_data[[claim_type]]
+        x_axis_values <- seq(min(to_plot$patient_claim_count),
+                             max(to_plot$patient_claim_count))
+        title <- str_c(title_base, ', ', claim_type, 's')
+        fig <- to_plot %>%
+            ggplot(aes_string(x = 'patient_claim_count',
+                              fill = variable_name)) +
+            geom_bar(position = 'fill') +
+            scale_x_discrete('Number of visits',
+                             limits = factor(x_axis_values)) +
+            scale_fill_discrete(legend_title) +
+            scale_y_continuous('Percentage of patients',
+                               labels = label_percent()) +
+            ggtitle(title)
+        print(fig)
+    }
+    invisible(fig)
+}
+
+plot_payments <- function(patient_data, claim_types = NULL) {
+    to_select <- c(payment_variables, chronic_conditions)
+    if (is.null(claim_types)) {
+        claim_types <- sort(names(patient_data))
+    }
+    for (claim_type in claim_types) {
+        to_plot <- patient_data[[claim_type]] %>%
             select(all_of(to_select)) %>%
             # Patients for which the only visit has visit_cost == 0 show up
             # with missing values for the columns in payment_variables.
             drop_na() %>%
-            generate_condition_column()
+            generate_condition_column() %>%
+            # Default ggplot2 plotting orders strings by alphabetical order.
+            # For the plots generated here, with string labels the y axis,
+            # reverse that order, so that 'a' is at the top of the y axis
+            # rather than at the bottom.
+            mutate(condition = fct_rev(condition))
         for (variable_name in payment_variables) {
             title <- str_c(payment_labels[variable_name], ', ',
                            claim_type, 's')
@@ -343,11 +439,12 @@ plot_payments <- function(patients) {
             print(fig)
         }
     }
+    invisible(fig)
 }
 
 plot_provider_claim_counts <- function(claim_counts, claim_type) {
-    plot_data <- claim_counts %>%
-        filter(claim_type == .env$claim_type, claim_year == 2009)
+    plot_data <- claim_counts[[claim_type]] %>%
+        filter(claim_year == 2009)
 
     to_plot <- plot_data %>%
         group_by(Provider) %>%
@@ -415,6 +512,7 @@ plot_cost_vs_duration <- function(fig_base, title) {
         scale_color_discrete('Potential fraud') +
         ggtitle(title)
     print(fig)
+    invisible(fig)
 }
 
 plot_cost_per_day <- function(to_plot, variable_name, claim_type,
@@ -462,8 +560,7 @@ plot_cost_per_day <- function(to_plot, variable_name, claim_type,
 }
 
 plot_fraction_original <- function(duplicates_data, claim_type) {
-    to_plot <- duplicates_data %>%
-        filter(claim_type == .env$claim_type) %>%
+    to_plot <- duplicates_data[[claim_type]] %>%
         filter_out_no_codes() %>%
         group_by(Provider, PotentialFraud) %>%
         summarise(
