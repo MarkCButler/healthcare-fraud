@@ -235,6 +235,34 @@ Columns with NA:
        InscClaimAmtReimbursed equal to zero.  For instance, there are 25 rows
        of this sort in the training data.
 
+## Training data summary {.unnumbered}
+
+Hospital visits
+
+  - Number of hospital visits:  558,211
+  - Number of inpatient visits:  40,474
+  - Number of outpatient visits:  517,737
+
+Patients
+
+  - Number of patients:  138,556
+  - Number of inpatients:  31,289
+  - Number of outpatients:  133,980
+  - Number of patients receiving both inpatient and outpatient care:  26,713
+
+Doctors
+
+  - Number of doctors:  100,737
+  - Number of inpatient doctors:  18,256
+  - Number of outpatient doctors:  89,770
+  - Number of doctors giving both inpatient and outpatient care:  7,289
+
+Healthcare providers
+
+  - Number of providers:  5,410
+  - Number of providers giving inpatient care:  2,092
+  - Number of providers giving outpatient care:  5,012
+  - Number of providers giving both inpatient and outpatient care:  1,694
 
 # Analysis
 
@@ -434,17 +462,6 @@ plot_top_visit_reasons(freq_admit_codes, 'outpatient')
 
 ### Questions {.unnumbered}
 
-How many medical doctors are there in the train outpatient dataset?
-
-How many medical doctors are there in the train inpatient dataset? Do they
-match with those from the outpatient record?
-
-Do those inpatient patients show worse health conditions (in terms of chronic
-diseases) than typical outpatient patients, or do those who have more visits
-to the providers have worse health conditions? Provide an analysis on these
-issues.
-
-How many distinct patients (BeneIDs) are there in the in/out-patient datasets?
 
 Do doctors serve for different providers? Study the distribution of hospital
 counts/doctor? Is it possible to characterize those doctors who move around
@@ -457,43 +474,12 @@ services from a lot of different hospitals?
 Do the same providers provide both inpatient and outpatient services?
 Summarize your finding.
 
-Do Some of the same patients receive both inpatient and outpatient services?
-Summarize your finding.
-
-### Answers {.tab-display .unnumbered}
-
-<div class="code-block">
-
-```{r, questions-1a, cache=TRUE}
-# Number of inpatient and outpatient doctors, intersection between the two
-# sets.
-inpatient_doctors_vec <-  inpatient_doctors$doctor
-outpatient_doctors_vec <- outpatient_doctors$doctor
-
-# How many medical doctors are there in the train inpatient dataset?
-length(inpatient_doctors_vec)
-# How many medical doctors are there in the train outpatient dataset?
-length(outpatient_doctors_vec)
-# Do they match with those from the outpatient record?
-length(intersect(inpatient_doctors_vec, outpatient_doctors_vec))
-```
-
-</div>
-
 
 ### Answers {.tab-display .unnumbered}
 
 <div class="code-block">
 
 ```{r, questions-1b, cache=TRUE}
-# How many distinct patients (BeneIDs) are there in the in/out-patient
-# datasets?
-inpatients_vec <- inpatients$BeneID %>% unique()
-length(inpatients_vec)
-outpatients_vec <- outpatients$BeneID %>% unique()
-length(outpatients_vec)
-in_out_patients_vec <- intersect(inpatients_vec, outpatients_vec)
-length(in_out_patients_vec)
 
 for (claim_type in claim_types) {
     to_plot <- doctors[[claim_type]]
@@ -525,13 +511,6 @@ for (claim_type in claim_types) {
     print(fig)
 }
 
-inpatient_providers_vec <- unique(inpatient_claims$Provider)
-outpatient_providers_vec <- unique(outpatient_claims$Provider)
-in_out_providers_vec <- intersect(inpatient_providers_vec,
-                                  outpatient_providers_vec)
-length(inpatient_providers_vec)
-length(outpatient_providers_vec)
-length(in_out_providers_vec)
 ```
 
 </div>
@@ -898,7 +877,6 @@ to_plot <- to_plot %>%
 
 fig <- to_plot %>%
     ggplot(aes(x = duration)) +
-    ylab('Number of claims') +
     scale_x_discrete('Duration (days)') +
     geom_bar(
         aes(fill = duration_type), position = 'identity',
@@ -908,7 +886,7 @@ fig <- to_plot %>%
         aes(color = duration_type), position = 'identity',
         stat = 'count', size = 0.7
     ) +
-    labs(fill = '', color = '') +
+    labs(y = 'Number of claims', fill = '', color = '') +
     ggtitle('Claim duration and visit duration for inpatients')
 print(fig)
 
