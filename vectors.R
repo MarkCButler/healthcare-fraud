@@ -79,11 +79,14 @@ names(code_descriptions) <- c(
 # plots are typically generated as a loop over claim_types.
 claim_types <- c('inpatient', 'outpatient')
 
-# Vector for recoding the first two strings of a factor with levels
-# 'inpatient', 'outpatient', 'both'.  This is used in combination with the
-# function forcats::fct_recode.
-renamed_claim_types <- c('inpatient only' = 'inpatient',
-                         'outpatient only' = 'outpatient')
+# Names of columns that contain doctor id.
+doctor_colnames <- c('AttendingPhysician', 'OperatingPhysician',
+                     'OtherPhysician')
+
+# Column names used in counting instances of potential fraud.
+fraud_count_colnames <- c('claim_count', 'claim_count_fraud',
+                          'provider_count', 'provider_count_fraud',
+                          'claim_fraud_fraction', 'provider_fraud_fraction')
 
 # Locations corresponding to SSA "state codes," i.e., the first two digits of
 # fibe-digits SSA county codes.  Copied from

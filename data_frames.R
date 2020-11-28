@@ -100,10 +100,6 @@ data_frames <- map(data_filenames, read_data)
 # Variables used by functions in this script.
 #############################################################################
 
-# Names of columns that contain doctor id.
-doctor_colnames <- c('AttendingPhysician', 'OperatingPhysician',
-                     'OtherPhysician')
-
 # Names of columns that contain a code for a hospital visit.
 all_claim_colnames <- union(colnames(data_frames$train_inpatient),
                             colnames(data_frames$train_outpatient))
@@ -168,22 +164,49 @@ na_counts <- map(data_frames, get_na_counts)
 # as 'inpatient', 'outpatient', or 'both'.
 #############################################################################
 
-combine_claim_types <- function(inpatient_data, outpatient_data, row_id) {
-    both_claim_types <- inpatient_data %>%
-        semi_join(outpatient_data, by = row_id) %>%
-        mutate(claim_type = 'both')
+combine_claim_types <- function(inpatient_data, outpatient_data, row_id,
+                                include_fraud_counts = FALSE) {
+
+    if (include_fraud_counts) {
+        shared_row_id <- intersect(
+            inpatient_data[[row_id]],
+             outpatient_data[[row_id]]
+        )
+        both_claim_types <- inpatient_data %>%
+            bind_rows(outpatient_data) %>%
+            filter(across(row_id,
+                          ~ (.) %in% shared_row_id)) %>%
+            group_by(across(row_id)) %>%
+            summarise(
+                across(
+                    c(claim_count, claim_count_fraud,
+                      provider_count, provider_count_fraud),
+                    sum
+                ),
+                .groups = 'drop'
+            ) %>%
+            mutate(
+                claim_fraud_fraction = claim_count_fraud / claim_count,
+                provider_fraud_fraction = provider_count_fraud / provider_count,
+                claim_type = 'both'
+            )
+    } else{
+        both_claim_types <- inpatient_data %>%
+            semi_join(outpatient_data, by = row_id) %>%
+            mutate(claim_type = 'both')
+    }
+
     only_inpatient <- inpatient_data %>%
         anti_join(outpatient_data, by = row_id) %>%
-        mutate(claim_type = 'inpatient')
+        mutate(claim_type = 'inpatient only')
     only_outpatient <- outpatient_data %>%
         anti_join(inpatient_data, by = row_id) %>%
-        mutate(claim_type = 'outpatient')
+        mutate(claim_type = 'outpatient only')
 
-    claim_type_levels <- c('inpatient', 'outpatient', 'both')
-    combined <- rbind(both_claim_types,
-                      only_inpatient,
-                      only_outpatient,
-                      make.row.names = FALSE) %>%
+    claim_type_levels <- c('inpatient only', 'outpatient only', 'both')
+    combined <- bind_rows(both_claim_types,
+                          only_inpatient,
+                          only_outpatient) %>%
         mutate(claim_type = factor(claim_type, levels = claim_type_levels))
 
     return(combined)
@@ -291,14 +314,17 @@ get_patient_claim_counts <- function(claim_data, claim_type,
         claim_counts <- claim_data %>%
             group_by(BeneID) %>%
             summarise(
-                patient_claim_count_fraud = sum(PotentialFraud == 'Yes'),
-                patient_claim_count = n(),
+                claim_count_fraud = sum(PotentialFraud == 'Yes'),
+                claim_count = n(),
                 .groups = 'drop'
+            ) %>%
+            mutate(
+                claim_fraud_fraction = claim_count_fraud / claim_count
             )
     } else {
         claim_counts <- claim_data %>%
             group_by(BeneID) %>%
-            summarise(patient_claim_count = n(), .groups = 'drop')
+            summarise(claim_count = n(), .groups = 'drop')
     }
 
     claim_counts <- mutate(claim_counts, claim_type = .env$claim_type)
@@ -428,10 +454,9 @@ claims <- list(
 # potential_fraud, claim_type.
 claims_concatenated <- inpatient_claims %>%
     select(BeneID, patient_age, PotentialFraud, claim_type) %>%
-    rbind(
+    bind_rows(
         select(outpatient_claims,
-               BeneID, patient_age, PotentialFraud, claim_type),
-        make.row.names = FALSE
+               BeneID, patient_age, PotentialFraud, claim_type)
     )
 
 
@@ -453,12 +478,12 @@ patient_ages <- claims_concatenated %>%
 #   claim_data:  data frame with rows that correspond to hospital visits
 #   claim_counts:  data frame with rows giving information about claim counts
 #                  (grouped by patient)
-#   claim_type:  either 'inpatient' or 'outpatient'
 #
 # The function uses dplyr operations to add columns to the argument
 # patient_data, which is then returned.
 #
-augment_patient_data <- function(patient_data, claim_data, claim_counts) {
+augment_patient_data <- function(patient_data, claim_data, claim_counts,
+                                 training = TRUE) {
 
     patient_data <- patient_data %>%
         filter(BeneID %in% claim_data$BeneID) %>%
@@ -478,11 +503,26 @@ augment_patient_data <- function(patient_data, claim_data, claim_counts) {
             .groups = 'drop'
         )
 
-    provider_counts <- claim_data %>%
-        select(Provider, BeneID) %>%
-        distinct() %>%
-        group_by(BeneID) %>%
-        summarise(provider_count = n(), .groups = 'drop')
+    if (training) {
+        provider_counts <- claim_data %>%
+            select(Provider, BeneID) %>%
+            distinct() %>%
+            add_fraud_flag() %>%
+            group_by(BeneID) %>%
+            summarise(provider_count = n(),
+                      provider_count_fraud = sum(PotentialFraud == 'Yes'),
+                      .groups = 'drop') %>%
+            mutate(
+                provider_fraud_fraction = provider_count_fraud / provider_count
+            )
+    } else {
+        provider_counts <- claim_data %>%
+            select(Provider, BeneID) %>%
+            distinct() %>%
+            group_by(BeneID) %>%
+            summarise(provider_count = n(), .groups = 'drop')
+    }
+
 
     # For both the training and test sets, the inpatient data frame has
     # missing values for DeductibleAmtPaid.  In all cases where the value is
@@ -540,15 +580,16 @@ patients <- list(
     inpatient = inpatients,
     outpatient = outpatients
 )
-patients_concatenated <- rbind(
+patients_concatenated <- bind_rows(
     inpatients,
-    outpatients,
-    make.row.names = FALSE
+    outpatients
 )
+to_select <- c('BeneID', fraud_count_colnames)
 patients_combined <- combine_claim_types(
-    select(inpatients, BeneID),
-    select(outpatients, BeneID),
-    row_id = 'BeneID'
+    select(inpatients, all_of(to_select)),
+    select(outpatients, all_of(to_select)),
+    row_id = 'BeneID',
+    include_fraud_counts = TRUE
 )
 
 
@@ -595,6 +636,9 @@ get_doctor_data <- function(claim_data, claim_type, training = TRUE) {
                 claim_count_fraud = sum(PotentialFraud == 'Yes'),
                 provider_count = n_distinct(Provider),
                 .groups = 'drop'
+            ) %>%
+            mutate(
+                claim_fraud_fraction = claim_count_fraud / claim_count
             )
         doctor_data <- doctor_data %>%
             filter(PotentialFraud == 'Yes') %>%
@@ -602,7 +646,10 @@ get_doctor_data <- function(claim_data, claim_type, training = TRUE) {
             summarise(provider_count_fraud = n_distinct(Provider),
                       .groups = 'drop') %>%
             right_join(count_data, by = 'doctor') %>%
-            replace_na(list(provider_count_fraud = 0))
+            replace_na(list(provider_count_fraud = 0)) %>%
+            mutate(
+                provider_fraud_fraction = provider_count_fraud / provider_count
+            )
     } else {
         doctor_data <- doctor_data %>%
             group_by(doctor) %>%
@@ -630,10 +677,12 @@ doctors <- list(
     inpatient = inpatient_doctors,
     outpatient = outpatient_doctors
 )
+to_select <- c('doctor', fraud_count_colnames)
 doctors_combined <- combine_claim_types(
-    select(inpatient_doctors, doctor),
-    select(outpatient_doctors, doctor),
-    row_id = 'doctor'
+    select(inpatient_doctors, all_of(to_select)),
+    select(outpatient_doctors, all_of(to_select)),
+    row_id = 'doctor',
+    include_fraud_counts = TRUE
 )
 
 

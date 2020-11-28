@@ -120,6 +120,13 @@ log_scale_dollar <- function(axis_label, axis) {
     }
 }
 
+# Return a sequence of successive integer values covering the full range of
+# values in the input vector.
+get_integer_labels <- function(integer_vector) {
+    return(seq(min(integer_vector),
+               max(integer_vector)))
+}
+
 
 #############################################################################
 # Plot a bar chart or histogram in two different formats:
@@ -266,7 +273,7 @@ plot_seasonality <- function(series_data, stl_model, title) {
 plot_summary <- function(data, title, x_label, y_label,
                          number_plot = TRUE, percent_plot = TRUE) {
     fig_base <- data %>%
-        ggplot(aes(x = fct_recode(claim_type, !!!renamed_claim_types))) +
+        ggplot(aes(x = claim_type)) +
         xlab(x_label) +
         ggtitle(title)
     plot_bar_charts(fig_base, y_label, number_plot = number_plot,
@@ -411,11 +418,10 @@ plot_visits_per_patient <- function(patient_data, variable_name,
     }
     for (claim_type in claim_types) {
         to_plot <- patient_data[[claim_type]]
-        x_axis_values <- seq(min(to_plot$patient_claim_count),
-                             max(to_plot$patient_claim_count))
+        x_axis_values <- get_integer_labels(to_plot$claim_count)
         title <- str_c(title_base, ', ', claim_type, 's')
         fig <- to_plot %>%
-            ggplot(aes_string(x = 'patient_claim_count',
+            ggplot(aes_string(x = 'claim_count',
                               fill = variable_name)) +
             geom_bar(position = 'fill') +
             scale_x_discrete('Number of visits',
@@ -444,6 +450,117 @@ plot_top_visit_reasons <- function(admit_codes, claim_type) {
         guides(fill = FALSE) +
         ggtitle(title)
     print(fig)
+    invisible(fig)
+}
+
+plot_bar_chart_plain_fill <- function(to_plot,
+                                      variable_name,
+                                      x_label,
+                                      y_label,
+                                      title,
+                                      count_limit = NULL) {
+    fig <- to_plot %>%
+        ggplot(aes_string(x = variable_name)) +
+        geom_bar(fill = 'navyblue') +
+        xlab(x_label) +
+        ylab(y_label) +
+        ggtitle(title)
+
+    if (!is.null(count_limit)) {
+        fig <- fig + coord_cartesian(xlim = c(NA, count_limit))
+    }
+
+    print(fig)
+}
+
+plot_fraud_per_individual <- function(data,
+                                      count_type,
+                                      individual_type,
+                                      claim_type,
+                                      include_counts = TRUE,
+                                      count_limit = NULL) {
+    to_plot <- data[[claim_type]]
+    variable_name_count <- str_c(count_type, '_count')
+    variable_name_count_fraud <- str_c(count_type, '_count_fraud')
+    variable_name_fraud_fraction <- str_c(count_type, '_fraud_fraction')
+    to_plot$count_legit <- factor(
+        to_plot[[variable_name_count]] - to_plot[[variable_name_count_fraud]]
+    )
+    # Convert counts to factors for plotting.
+    to_plot <- to_plot %>%
+        mutate(across(
+            all_of(c(variable_name_count, variable_name_count_fraud)),
+            ~ factor(.)
+        ))
+
+    if (include_counts) {
+
+        title <- str_c('Number of ', count_type, 's per ', individual_type,
+                       ',\n', claim_type, ' claims')
+        plot_bar_chart_plain_fill(
+            to_plot,
+            variable_name = variable_name_count,
+            x_label = str_c('Number of ', count_type,
+                            's per ', individual_type),
+            y_label = str_c('Number of ', individual_type, 's'),
+            title = title,
+            count_limit = count_limit
+        )
+
+        title <- str_c('Number of fraudulent ', count_type,
+                       's per ', individual_type,
+                       ',\n', claim_type, ' claims')
+        plot_bar_chart_plain_fill(
+            to_plot,
+            variable_name = variable_name_count_fraud,
+            x_label = str_c('Number of fraudulent ', count_type,
+                            's per ', individual_type),
+            y_label = str_c('Number of ', individual_type, 's'),
+            title = title,
+            count_limit = count_limit
+        )
+
+        title <- str_c('Number of legitimate providers per ', individual_type,
+                       ',\n', claim_type, ' claims')
+        plot_bar_chart_plain_fill(
+            to_plot,
+            variable_name = 'count_legit',
+            x_label = str_c('Number of legitimate ', count_type,
+                            's per ', individual_type),
+            y_label = str_c('Number of ', individual_type, 's'),
+            title = title,
+            count_limit = count_limit
+        )
+    }
+
+    title <- str_c('Percentage of fraudulent ', count_type,
+                   's per ', individual_type,
+                   ',\n', claim_type, ' claims')
+    axis_label <- str_c('Percentage fraudulent ', count_type, 's')
+    fig <- to_plot %>%
+        ggplot(aes_string(x = variable_name_fraud_fraction)) +
+        geom_histogram(fill = 'navyblue', bins = 35) +
+        scale_x_continuous(axis_label, labels = label_percent()) +
+        ylab(str_c('Number of ', individual_type, 's')) +
+        ggtitle(title)
+    print(fig)
+
+    fig <- to_plot %>%
+        ggplot(aes_string(x = variable_name_count,
+                          y = variable_name_fraud_fraction)) +
+        geom_boxplot(aes_string(fill = variable_name_count)) +
+        xlab(str_c('Number of ', count_type,
+                   's per ', individual_type)) +
+        scale_y_continuous(axis_label, labels = label_percent()) +
+        guides(fill = FALSE) +
+        ggtitle(title)
+
+    if (!is.null(count_limit)) {
+        fig <- fig + coord_cartesian(xlim = c(NA, count_limit))
+    }
+
+    print(fig)
+
     invisible(fig)
 }
 

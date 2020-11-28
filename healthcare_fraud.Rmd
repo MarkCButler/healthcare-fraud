@@ -78,19 +78,24 @@ from Kaggle is presented.  The analysis has two goals:
 
 ## Description {.unnumbered}
 
-The dataset contains training data and test data, each with four data frames.
+The dataset contains training data and test data, each with four csv files.
 
-The training data was used for the analysis.  Details of the data frames:
+The training data was used for the analysis.  Details of the csv files:
 
   - Inpatient visits to a hospital (30 columns, <nobr>~ 40,000</nobr> rows, )
   - Outpatient visits to a hospital (27 columns, <nobr>~ 520,000</nobr> rows)
   - The patients who made these hospital visits (25 columns, <nobr>~ 140,000</nobr>
     rows)
-  - The hospitals visited, referred to as providers (2 columns:  provider ID and
-    PotentialFraud label, <nobr>~ 5,400</nobr> rows)
+  - The hospitals visited, referred to as providers (2 columns:  provider ID
+    and PotentialFraud label, <nobr>~ 5,400</nobr> rows)
 
-The patients in dataset appear to Medicare patients residing in the US and
-Africa.
+The patients in the dataset appear to be Medicare patients residing in the US
+and Africa.
+
+While 9.4% of the providers in the training data have the "potential fraud"
+label, 38% of the claims were submitted by these providers.  Even more
+striking, 58% of the inpatient claims were submitted by "potential fraud"
+providers.
 
 <div class="summary-code-block">
 
@@ -105,8 +110,8 @@ plot_summary(providers_combined, title = 'Healthcare providers',
 <div class="summary-code-block">
 
 ```{r, dataset-summary-2, echo=FALSE, cache=TRUE}
-plot_summary(claims_concatenated, title = 'Hospital visits',
-             x_label = 'Visit type', y_label = 'visits',
+plot_summary(claims_concatenated, title = 'Provider claims',
+             x_label = 'Claim type', y_label = 'claims',
              number_plot = FALSE)
 ```
 
@@ -117,10 +122,10 @@ plot_summary(claims_concatenated, title = 'Hospital visits',
 The hospital visits in the dataset occurred throughout 2009 and were mainly
 limited to 2009.
 
-The healthcare market represented by the dataset appears to be Medicare
-patients, which include people who are 65 or older, certain younger people
-with disabilities, and people with end-stage renal disease or ALS (Lou
-Gehrig's disease).
+Multiple clues in the dataset indicate that the hospital patients are Medicare
+patients.  Medicare covers patients who are 65 or older, certain younger people
+with disabilities, and people with end-stage renal disease (permanent kidney
+failure).
 
   - The first clue leading to this conclusion is that for nearly all of the
     inpatient visits, the deductible paid by the patient was $1068, the 2009
@@ -128,16 +133,16 @@ Gehrig's disease).
     inpatient visits had NA for the deductible paid, but for all other
     inpatient visits the deductible paid was $1068.)
   - Consistent with the special treatment of end-stage renal disease by
-    Medicare, the csv table of patient info include a column of 0 and 1 values
-    with column heading "Renal Disease."  This column is among other columns
-    that identify a patient, such as birth date, gender and race.
+    Medicare, the table of patient info includes a boolean feature
+    RenalDiseaseIndicator.  This column is among other columns that identify a
+    patient, such as birth date, gender and race.
   - The column names NoOfMonths_PartACov, NoOfMonths_PartBCov in the table of
     patients can also be understood in this context:  these columns likely
     gives the number of months in 2009 the patient had coverage by Medicare
     Part A and Medicare Part B, respectively.  (Each of these columns contains
     integer values from 0 to 12.)
 
-The hospital patients appear to be residents of the US and Africa.
+The patients appear to be residents of the US and Africa.
 
   - Each patient is identified with a state and a county, both labeled by
     integers (referred to here as codes).  There are 52 different state codes
@@ -146,22 +151,22 @@ The hospital patients appear to be residents of the US and Africa.
   - The state and county codes appear to be components of 5-digit SSA
     (social-security administration) codes that identifies patient location.
     For example, the dataset includes 156 patients with state code 49 and
-    county code 430, and these reside in Henrico County, Virginia (SSA code
-    49430).
-  - Several consistency support this conclusion.  For example, nearly all of
-    the <nobr>~ 3,000</nobr> combinations of state code and county code in the
-    dataset correspond to locations specified by a 5-digit SSA code.  Five US
-    states (AK, CA, IL, NH, VA) in the dataset included county codes that I
-    could not identify from the
-    [data](https://www.nber.org/research/data/ssa-federal-information-processing-series-fips-state-and-county-crosswalk)
+    county code 430, and these patients probably reside in Henrico County,
+    Virginia (SSA code 49430).
+  - Several consistency checks support this conclusion.  For example, nearly
+    all of the <nobr>~ 3,000</nobr> combinations of state code and county code
+    in the dataset correspond to locations specified by a 5-digit SSA code.
+    Five US states (AK, CA, IL, NH, VA) in the dataset included county codes
+    that I could not identify from the
+    [SSA code data](https://www.nber.org/research/data/ssa-federal-information-processing-series-fips-state-and-county-crosswalk)
     published by the [National Bureau of Economic Research](https://www.nber.org/).
   - For simplicity, I will use "SSA state code" to refer to the first two
     digits of a 5-digit SSA code that identifies patient location.  Using this
     terminology, SSA state codes 1 to 53 correspond to the 50 US states,
     together with District of Columbia, Puerto Rico, and the US Virgin
     Islands.  For example, state code 53 corresponds to Wyoming.
-  - SSA state codes above 53 are also defined:  for instance, 54 and 55 corresponds
-    to Africa and Asia, respectively.
+  - SSA state codes above 53 are also defined:  for instance, 54 and 55
+    corresponds to Africa and Asia, respectively.
   - The SSA state codes in the dataset correspond to the 50 US states, together
     with the District of Columbia and Africa.
 
@@ -172,18 +177,19 @@ test data) is 6,763.  This is somewhat larger than the
 
   - Is this apparent discrepancy due to the inclusion of Medicare patients
     living in Africa?  The number of providers in the dataset visited only by
-    patients residing in Africa is 55.
-  - The statistics on hospitals in the US originate from the American Hospital
-    Association (AHA).  Although the description of the healthcare-fraud
-    dataset on Kaggle refers to "hospital visits," it may be that not all
-    healthcare providers visited met the AHA definition of a hospital.
+    patients residing in Africa is 55, so this is probably not the explanation.
+  - The 2009 count of US hospitals originated from the
+    [American Hospital Association](https://www.aha.org/statistics/fast-facts-us-hospitals)
+    (AHA).  Although the description of the healthcare-fraud dataset on Kaggle
+    refers to "hospital visits," it may be that not all healthcare providers
+    visited met the AHA definition of a hospital.
 
 The dataset includes information for <nobr>~ 690,000</nobr> visits to a
 hospital (or similar healthcare provider), including <nobr>~ 50,000</nobr>
 inpatient visits and <nobr>~ 640,000</nobr> outpatient visits.  By way of
-comparison, the number of inpatient
-[hospital visits in the US in 2009](https://www.hcup-us.ahrq.gov/reports/factsandfigures/2009/pdfs/FF_report_2009.pdf)
-for which Medicare was the expected primary payer was 14.7 million.
+comparison, the
+[number of inpatient hospital visits in the US in 2009 for which Medicare was the expected primary payer](https://www.hcup-us.ahrq.gov/reports/factsandfigures/2009/pdfs/FF_report_2009.pdf)
+was <nobr>~ 15 million</nobr>.
 
 The number of patients in the dataset is <nobr>~ 150,000</nobr>, compared to
 <nobr>~ 46 million</nobr> people
@@ -191,18 +197,21 @@ The number of patients in the dataset is <nobr>~ 150,000</nobr>, compared to
 2009](https://www.cms.gov/Research-Statistics-Data-and-Systems/Statistics-Trends-and-Reports/CMS-Statistics-Reference-Booklet/Downloads/CMS_Stats_2009.pdf).
 
 Within the Medicare system, payments for doctor services are distinct from
-payments to hospitals.  The dataset appears to have information only about
-payments to hospitals.
+payments to hospitals.  The dataset does not appear to include information
+about payments to doctors.
 
   - For both inpatient and outpatient visits covered by Medicare,
     [patients pay 20%](https://www.medicare.gov/Pubs/pdf/11435-Are-You-an-Inpatient-or-Outpatient.pdf)
     of the cost of doctor services.
-  - In the dataset, the information about payment is contained in the features
-    InscClaimAmtReimbursed and DeductibleAmtPaid.  Breaking down payments by
-    amount reimbursed and deductible paid is natural for hospital services, but
-    the payments made by patients for doctor services are distinct from these
-    two categories.
-  - Note that a potential fraud label is given for providers but not for
+  - In the dataset, the information about payments is contained in the
+    features InscClaimAmtReimbursed and DeductibleAmtPaid.  Payments made by
+    patients for doctor services are distinct from these two categories.
+  - In principle the payments made by patients for doctor services could be
+    lumped in with feature DeductibleAmtPaid, but clearly this was not done for
+    inpatient visits, since all claims have $1068 or NA for this feature.  (As
+    noted above, $1068 is the 2009 deductible for an inpatient visit covered by
+    Medicare.)
+  - Note that a "potential fraud" label is given for providers but not for
     doctors.  This focus on provider fraud may explain the apparent lack of
     information in the dataset about payments for doctor services.
 
@@ -212,8 +221,8 @@ An outpatient hospital visit is often defined as a
 [visit for which it is not necessary to stay overnight](https://www.pbmchealth.org/news-events/blog/difference-between-inpatient-and-outpatient-care)
 at the hospital.
 
-However Medicare defines an outpatient as one who has not formally been admitted
-to a hospital with a doctor's order.  A
+However Medicare defines an outpatient as one who has not formally been
+admitted to a hospital with a doctor's order.  A
 [Medicare publication](https://www.medicare.gov/Pubs/pdf/11435-Are-You-an-Inpatient-or-Outpatient.pdf)
 explains that the decision to formally admit a patient is "a complex medical
 decision," and even a stay of two or more nights at a hospital does not
@@ -225,16 +234,17 @@ guarantee that a patient will be an inpatient.
     doctor decide whether a patient needs to be formally admitted.
 
 The question of whether to formally admit a patient can be financially
-significant for the patient, because inpatient and outpatient visits are covered
-by different parts of the Medicare program (Part A and Part B, respectively.)
+significant for the patient, because inpatient and outpatient visits are
+covered by different parts of the Medicare program (Part A and Part B,
+respectively).
 
   - Medicare patients pay a one-time deductible for the set of inpatient visits
-    made during a year
+    made during a year.
   - However, in general a copayment must be made for each outpatient visit, and
     the set of copayments made by a patient during a year can add up to more
-    that the one-time deductible for inpatient visits.  (In appears that in the
-    csv file for outpatient visits, the feature DeductibleAmtPaid gives
-    patient copayments.)
+    that the one-time deductible for inpatient visits.  (In the table for
+    outpatient visits, the feature DeductibleAmtPaid apparently gives patient
+    copayments.)
 
 ## Data integrity {.unnumbered}
 
@@ -248,11 +258,12 @@ InscClaimAmtReimbursed) are both equal to zero in some cases.
   - This is true for about 4% of the outpatient visits in the training data,
     for instance.
   - Does zero payment indicate that payment was refused because fraud was
-    suspected?  Apparently not, because the fraction of zero-payment rows
-    labeled as PotentialFraud (36.1%) is quite close to the fraction for the
-    full training set of outpatient visits (36.6%).
-  - A possible explanation is that the dataset includes claims to Medicare
-    that were eventually covered by other insurers.
+    suspected?  Apparently not, because the fraction of zero-payment
+    outpatient claims from providers labeled as "potential fraud" (36.1%) is
+    quite close to the fraction for the full training set of outpatient visits
+    (36.6%).
+  - A possible explanation is that the dataset includes claims submitted to
+    Medicare that were eventually covered by other insurers.
   - Another possibility is that in practice, hospitals receive zero payment
     for some outpatient visits, e.g., because the costs associated with
     collecting payment are too great to justify pursuing payment.
@@ -263,19 +274,19 @@ that a  valid data point is missing.
 
 Columns with NA:
 
-  1. The csv tables for inpatient and outpatient visits include a number of
-     columns in which codes relevant for the visit can be reported.  For
-     example, there are 10 columns ClmDiagnosisCode_1 through
-     ClmDiagnosisCode_10 for claim diagnosis codes, and there are many NA in
-     these columns.
+  1. The tables for inpatient and outpatient visits include a number of columns
+     in which codes relevant for the visit can be reported.  For example, there
+     are 10 columns ClmDiagnosisCode_1 through ClmDiagnosisCode_10 for claim
+     diagnosis codes, and there are many NA in these columns.
 
       - Most NA in these columns can be viewed as an artifact of the table
         organization.
-      - There are <nobr>~ 10,000</nobr> outpatient visits (but no inpatient
-        visits) in the dataset that have NA for all code columns.
-      - Is it plausible that 1.5% of outpatient Medicare claims have no codes,
-        or is it more likely that the submitted codes are missing from the
-        dataset?  Further research would be needed to answer this question.
+      - About 1.5% of outpatient visits (but no inpatient visits) in the
+        dataset that have NA for all code columns.
+      - Is it plausible that these outpatient Medicare claims had no codes when
+        submitted, or is it more likely that the submitted codes are missing
+        from the dataset?  Further research would be needed to answer this
+        question.
 
    2. Similarly, three columns are reserved for physicians associated with the
       visit:  AttendingPhysician, OperatingPhysician, OtherPhysician.
@@ -284,7 +295,7 @@ Columns with NA:
         table organization.
       - There are 135 inpatient visits and 1688 outpatient visits with NA in
         all three of these columns.
-      - Research questions:
+      - Possible research questions:
         - Is an outpatient hospital visit necessarily associated with a
           physician?  For instance, a nurse practitioner may be able to fill
           in for a physician for certain outpatient visits.
@@ -295,7 +306,8 @@ Columns with NA:
      deductible paid by inpatients was $1068 in all cases where it was not NA.
 
      - These NA probably correspond to visits for which the deductible payment
-       was zero, the patient had already paid the full deductible for the year.
+       was zero, because the patient had already paid the one-time deductible
+       for the year.
      - However there are samples that have NA for DeductibleAmtPaid with
        InscClaimAmtReimbursed equal to zero.  For instance, there are 25 rows
        of this sort in the training data.
@@ -325,9 +337,9 @@ Hospital visits
   - Number of inpatient visits:  40,474
   - Number of outpatient visits:  517,737
 
-Each hospital visit is associated with a claim made by a provider.  For purposes
-of exploratory data analysis, claims made by a provider that has been flagged
-for potential fraud also receive the "potential fraud" label.
+Each hospital visit is associated with a claim made by a provider.  For
+purposes of exploratory data analysis, claims made by a provider that has been
+flagged for potential fraud also receive the "potential fraud" label.
 
 <div class="summary-code-block">
 
@@ -396,7 +408,7 @@ plot_chronic_percent(patients_concatenated, chronic_conditions[1])
 
 Chronic conditions are widespread even among the Medicare patients who are not
 elderly.  In the plot below, the patients under the age of 65 are disabled or
-have a disease with special Medicare coverage (ALS or kidney failure).
+have end-stage renal disease (permanent kidney failure).
 
 <div class="summary-code-block">
 
@@ -488,11 +500,11 @@ for (variable_name in chronic_conditions) {
 ```{r, visits-per-patient, echo=FALSE, cache=TRUE}
 for (claim_type in claim_types) {
     to_plot <- patients[[claim_type]]
-    x_axis_values <- seq(min(to_plot$patient_claim_count),
-                         max(to_plot$patient_claim_count))
+    x_axis_values <- seq(min(to_plot$claim_count),
+                         max(to_plot$claim_count))
     title <- str_c('Number of visits made by ', claim_type, 's')
     fig <- to_plot %>%
-        ggplot(aes(x = patient_claim_count)) +
+        ggplot(aes(x = claim_count)) +
         geom_bar(fill = 'navyblue') +
         scale_x_discrete('Number of visits', limits = factor(x_axis_values)) +
         ylab('Number of patients') +
@@ -558,6 +570,148 @@ plot_top_visit_reasons(freq_admit_codes, 'inpatient')
 
 ```{r, visit-reason-out, echo=FALSE, cache=TRUE}
 plot_top_visit_reasons(freq_admit_codes, 'outpatient')
+```
+
+</div>
+
+## Fraud associations for patients and doctors {.tabset}
+
+### Summary {.unnumbered}
+
+For simplicity, providers that have the "potential fraud" label, as well as
+claims submitted by these providers, will be labeled as "fraudulent" in the
+remainder of the presentation.
+
+The plots below show that for inpatient claims, both doctors and patients can
+both be roughly classified into two groups:  those with no fraudulent claims
+and those with only fraudulent claims.
+
+For patients, however, there is a small but still significant fraction that
+has 50% fraudulent claims.  There may be a distinct fraud mechanism associated
+with this smaller group.
+
+Note that in the category of inpatients having only a single claim, the median
+percentage of fraudulent claims is 100%.  (About 57% of the inpatients with
+only a single claim are associated with a fraudulent provider.)
+
+<div class="summary-code-block">
+
+```{r, patients-fraud-summary, echo=FALSE, cache=TRUE}
+    plot_fraud_per_individual(
+        patients,
+        count_type = 'claim',
+        individual_type = 'patient',
+        claim_type = 'inpatient',
+        include_counts = FALSE
+    )
+```
+
+</div>
+
+The rough separation of doctors into two groups can also be seen in the
+scatter plot below.  Doctors with a sufficiently large number of claims are
+exclusively in the "only fraudulent claims" group.
+
+<div class="summary-code-block">
+
+```{r, doctors-fraud-summary, echo=FALSE, cache=TRUE}
+plot_fraud_vs_legit <- function(data, claim_type) {
+    title <- 'Fraudulent claims vs total claims per doctor'
+    fig <- data[[claim_type]] %>%
+        ggplot(aes(x = claim_count, y = claim_count_fraud)) +
+        geom_point(color = 'navyblue') +
+        xlab('Total claims per doctor') +
+        ylab('Fraudulent claims per doctor') +
+        ggtitle(title)
+    print(fig)
+    invisible(fig)
+}
+plot_fraud_vs_legit(doctors, claim_type)
+title <- str_c('Percentage of fraudulent claims per doctor,',
+               '\ninpatient claims')
+axis_label <- str_c('Percentage fraudulent claims')
+fig <- doctors$inpatient %>%
+    ggplot(aes(x = claim_fraud_fraction)) +
+    geom_histogram(fill = 'navyblue', bins = 35) +
+    scale_x_continuous(axis_label, labels = label_percent()) +
+    ylab(str_c('Number of doctors')) +
+    ggtitle(title)
+print(fig)
+```
+
+</div>
+
+### Providers per patient {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, providers-per-patient, cache=TRUE}
+for (claim_type in claim_types) {
+    plot_fraud_per_individual(
+        patients,
+        count_type = 'provider',
+        individual_type = 'patient',
+        claim_type = claim_type
+    )
+}
+```
+
+</div>
+
+### Claims per patient {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, claims-per-patient, cache=TRUE}
+for (claim_type in claim_types) {
+    plot_fraud_per_individual(
+        patients,
+        count_type = 'claim',
+        individual_type = 'patient',
+        claim_type = claim_type
+    )
+}
+```
+
+</div>
+
+### Providers per doctor {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, providers-per-doctor, cache=TRUE}
+for (claim_type in claim_types) {
+    plot_fraud_per_individual(
+        doctors,
+        count_type = 'provider',
+        individual_type = 'doctor',
+        claim_type = claim_type
+    )
+}
+```
+
+</div>
+
+### Claims per doctor {.unnumbered}
+
+Note that for bar charts in which the number of claims per doctor is shown on
+the horizontal axis, this axis has been truncated, because a few doctors have a
+very large number of claims.  The true range can be seen from the scatter
+plots of fraudulent claims per doctor vs total claims per doctor.
+
+<div class="code-block tab-display">
+
+```{r, claims-per-doctor, cache=TRUE}
+for (claim_type in claim_types) {
+    plot_fraud_vs_legit(doctors, claim_type)
+    plot_fraud_per_individual(
+        doctors,
+        count_type = 'claim',
+        individual_type = 'doctor',
+        claim_type = claim_type,
+        count_limit = 30.5
+    )
+}
 ```
 
 </div>
@@ -660,47 +814,6 @@ services from a lot of different hospitals?
 
 Do the same providers provide both inpatient and outpatient services?
 Summarize your finding.
-
-
-### Answers {.tab-display .unnumbered}
-
-<div class="code-block">
-
-```{r, questions-1b, cache=TRUE}
-
-for (claim_type in claim_types) {
-    to_plot <- doctors[[claim_type]]
-    x_axis_values <- seq(min(to_plot$provider_count),
-                         max(to_plot$provider_count))
-    title <- str_c('Number of providers per doctor for ', claim_type, 's')
-    fig <- to_plot %>%
-        ggplot(aes(x = provider_count)) +
-        geom_bar(fill = 'navyblue') +
-        scale_x_discrete('Number of providers',
-                         limits = factor(x_axis_values)) +
-        ylab('Number of doctors') +
-        ggtitle(title)
-    print(fig)
-}
-
-for (claim_type in claim_types) {
-    to_plot <- patients[[claim_type]]
-    x_axis_values <- seq(min(to_plot$provider_count),
-                         max(to_plot$provider_count))
-    title <- str_c('Number of providers per patient for ', claim_type, 's')
-    fig <- to_plot %>%
-        ggplot(aes(x = provider_count)) +
-        geom_bar(fill = 'navyblue') +
-        scale_x_discrete('Number of providers',
-                         limits = factor(x_axis_values)) +
-        ylab('Number of patients') +
-        ggtitle(title)
-    print(fig)
-}
-
-```
-
-</div>
 
 ## Questions 2 {.tabset}
 
