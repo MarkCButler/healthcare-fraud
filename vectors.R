@@ -79,6 +79,12 @@ names(code_descriptions) <- c(
 # plots are typically generated as a loop over claim_types.
 claim_types <- c('inpatient', 'outpatient')
 
+# Vector for recoding the first two strings of a factor with levels
+# 'inpatient', 'outpatient', 'both'.  This is used in combination with the
+# function forcats::fct_recode.
+renamed_claim_types <- c('inpatient only' = 'inpatient',
+                         'outpatient only' = 'outpatient')
+
 # Locations corresponding to SSA "state codes," i.e., the first two digits of
 # fibe-digits SSA county codes.  Copied from
 # https://www.resdac.org/cms-data/variables/state-code-claim-ssa

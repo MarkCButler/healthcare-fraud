@@ -57,8 +57,9 @@ source('vectors.R')
 #      using the to_plot data frame.>
 # }
 #
-# There are many loops of this form in the current project, so avoiding the
-# unnecessary filter operations is worthwhile.
+# There are many loops (including some inner loops) of this form in the
+# current project, so avoiding the unnecessary filter operations is
+# worthwhile.
 #
 # In cases where inpatient and outpatient data needs to be manipulated as a
 # whole, a concatenated data frame is formed.  For instance, in assigning a
@@ -160,6 +161,33 @@ get_na_counts <- function(data) {
 }
 
 na_counts <- map(data_frames, get_na_counts)
+
+
+#############################################################################
+# Combine data frames with inpatient and outpatient scope, labeling each row
+# as 'inpatient', 'outpatient', or 'both'.
+#############################################################################
+
+combine_claim_types <- function(inpatient_data, outpatient_data, row_id) {
+    both_claim_types <- inpatient_data %>%
+        semi_join(outpatient_data, by = row_id) %>%
+        mutate(claim_type = 'both')
+    only_inpatient <- inpatient_data %>%
+        anti_join(outpatient_data, by = row_id) %>%
+        mutate(claim_type = 'inpatient')
+    only_outpatient <- outpatient_data %>%
+        anti_join(inpatient_data, by = row_id) %>%
+        mutate(claim_type = 'outpatient')
+
+    claim_type_levels <- c('inpatient', 'outpatient', 'both')
+    combined <- rbind(both_claim_types,
+                      only_inpatient,
+                      only_outpatient,
+                      make.row.names = FALSE) %>%
+        mutate(claim_type = factor(claim_type, levels = claim_type_levels))
+
+    return(combined)
+}
 
 
 #############################################################################
@@ -395,6 +423,17 @@ claims <- list(
     outpatient = outpatient_claims
 )
 
+# Concatenate inpatient_claims and outpatient_claims, including only columns
+# needed elsewhere in the project.  The columns are BeneID, patient_age,
+# potential_fraud, claim_type.
+claims_concatenated <- inpatient_claims %>%
+    select(BeneID, patient_age, PotentialFraud, claim_type) %>%
+    rbind(
+        select(outpatient_claims,
+               BeneID, patient_age, PotentialFraud, claim_type),
+        make.row.names = FALSE
+    )
+
 
 #############################################################################
 # Add columns to a data frame of hospital patients.
@@ -402,12 +441,9 @@ claims <- list(
 
 # For each patient, calculate the median age of that patient during the
 # hospital visits in the data set.  (The visits occurred within roughly a
-# year-long period.)  In order to include both inpatient and outpatient visits
-# in the calculation of the median, it is necessary to concatenate the
-# inpatient and outpatient data frames.
-patient_ages <- select(inpatient_claims, BeneID, patient_age) %>%
-    rbind(select(outpatient_claims, BeneID, patient_age),
-          make.row.names = FALSE) %>%
+# year-long period.)  Note that both inpatient and outpatient visits in the
+# calculation of the median.
+patient_ages <- claims_concatenated %>%
     group_by(BeneID) %>%
     summarise(age = median(patient_age), .groups = 'drop')
 
@@ -509,6 +545,11 @@ patients_concatenated <- rbind(
     outpatients,
     make.row.names = FALSE
 )
+patients_combined <- combine_claim_types(
+    select(inpatients, BeneID),
+    select(outpatients, BeneID),
+    row_id = 'BeneID'
+)
 
 
 #############################################################################
@@ -588,6 +629,11 @@ outpatient_doctors <- get_doctor_data(
 doctors <- list(
     inpatient = inpatient_doctors,
     outpatient = outpatient_doctors
+)
+doctors_combined <- combine_claim_types(
+    select(inpatient_doctors, doctor),
+    select(outpatient_doctors, doctor),
+    row_id = 'doctor'
 )
 
 
@@ -673,6 +719,11 @@ outpatient_providers <- get_provider_data(
 providers <- list(
     inpatient = inpatient_providers,
     outpatient = outpatient_providers
+)
+providers_combined <- combine_claim_types(
+    select(inpatient_providers, Provider, PotentialFraud),
+    select(outpatient_providers, Provider, PotentialFraud),
+    row_id = 'Provider'
 )
 
 

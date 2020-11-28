@@ -70,7 +70,7 @@ Exploratory data analysis of a healthcare-fraud
 from Kaggle is presented.  The analysis has two goals:
 
   - Provide general insight into the healthcare market represented by the
-    dataset (apparently healthcare covered by Medicare)
+    dataset
   - Reveal associations involving the "potential fraud" label for healthcare
     providers in the training dataset
 
@@ -84,13 +84,33 @@ The training data was used for the analysis.  Details of the data frames:
 
   - Inpatient visits to a hospital (30 columns, <nobr>~ 40,000</nobr> rows, )
   - Outpatient visits to a hospital (27 columns, <nobr>~ 520,000</nobr> rows)
-  - Patients who made these hospital visits (25 columns, <nobr>~ 140,000</nobr>
+  - The patients who made these hospital visits (25 columns, <nobr>~ 140,000</nobr>
     rows)
-  - Providers visited (2 columns:  provider ID and PotentialFraud label, 5,410
-    rows)
+  - The hospitals visited, referred to as providers (2 columns:  provider ID and
+    PotentialFraud label, <nobr>~ 5,400</nobr> rows)
 
 The patients in dataset appear to Medicare patients residing in the US and
 Africa.
+
+<div class="summary-code-block">
+
+```{r, dataset-summary-1, echo=FALSE, cache=TRUE}
+plot_summary(providers_combined, title = 'Healthcare providers',
+             x_label = 'Service type', y_label = 'providers',
+             number_plot = FALSE)
+```
+
+</div>
+
+<div class="summary-code-block">
+
+```{r, dataset-summary-2, echo=FALSE, cache=TRUE}
+plot_summary(claims_concatenated, title = 'Hospital visits',
+             x_label = 'Visit type', y_label = 'visits',
+             number_plot = FALSE)
+```
+
+</div>
 
 ## Scope {.unnumbered}
 
@@ -170,6 +190,51 @@ The number of patients in the dataset is <nobr>~ 150,000</nobr>, compared to
 [enrolled for Medicare coverage in
 2009](https://www.cms.gov/Research-Statistics-Data-and-Systems/Statistics-Trends-and-Reports/CMS-Statistics-Reference-Booklet/Downloads/CMS_Stats_2009.pdf).
 
+Within the Medicare system, payments for doctor services are distinct from
+payments to hospitals.  The dataset appears to have information only about
+payments to hospitals.
+
+  - For both inpatient and outpatient visits covered by Medicare,
+    [patients pay 20%](https://www.medicare.gov/Pubs/pdf/11435-Are-You-an-Inpatient-or-Outpatient.pdf)
+    of the cost of doctor services.
+  - In the dataset, the information about payment is contained in the features
+    InscClaimAmtReimbursed and DeductibleAmtPaid.  Breaking down payments by
+    amount reimbursed and deductible paid is natural for hospital services, but
+    the payments made by patients for doctor services are distinct from these
+    two categories.
+  - Note that a potential fraud label is given for providers but not for
+    doctors.  This focus on provider fraud may explain the apparent lack of
+    information in the dataset about payments for doctor services.
+
+## Terminology {.unnumbered}
+
+An outpatient hospital visit is often defined as a
+[visit for which it is not necessary to stay overnight](https://www.pbmchealth.org/news-events/blog/difference-between-inpatient-and-outpatient-care)
+at the hospital.
+
+However Medicare defines an outpatient as one who has not formally been admitted
+to a hospital with a doctor's order.  A
+[Medicare publication](https://www.medicare.gov/Pubs/pdf/11435-Are-You-an-Inpatient-or-Outpatient.pdf)
+explains that the decision to formally admit a patient is "a complex medical
+decision," and even a stay of two or more nights at a hospital does not
+guarantee that a patient will be an inpatient.
+
+  - For example, staying overnight in connection with a visit to the emergency
+    room would not necessarily be an inpatient visit.  Emergency-department
+    services are outpatient services, as are observation services, which help a
+    doctor decide whether a patient needs to be formally admitted.
+
+The question of whether to formally admit a patient can be financially
+significant for the patient, because inpatient and outpatient visits are covered
+by different parts of the Medicare program (Part A and Part B, respectively.)
+
+  - Medicare patients pay a one-time deductible for the set of inpatient visits
+    made during a year
+  - However, in general a copayment must be made for each outpatient visit, and
+    the set of copayments made by a patient during a year can add up to more
+    that the one-time deductible for inpatient visits.  (In appears that in the
+    csv file for outpatient visits, the feature DeductibleAmtPaid gives
+    patient copayments.)
 
 ## Data integrity {.unnumbered}
 
@@ -237,11 +302,41 @@ Columns with NA:
 
 ## Training data summary {.unnumbered}
 
+Healthcare providers
+
+  - Number of providers:  5,410
+  - Number of providers giving inpatient care:  2,092
+  - Number of providers giving outpatient care:  5,012
+  - Number of providers giving both inpatient and outpatient care:  1,694
+  - 9.4% of providers have the "potential fraud" label.
+
+<div class="summary-code-block">
+
+```{r, providers-summary, echo=FALSE, cache=TRUE}
+plot_summary(providers_combined, title = 'Healthcare providers',
+             x_label = 'Service type', y_label = 'providers')
+```
+
+</div>
+
 Hospital visits
 
   - Number of hospital visits:  558,211
   - Number of inpatient visits:  40,474
   - Number of outpatient visits:  517,737
+
+Each hospital visit is associated with a claim made by a provider.  For purposes
+of exploratory data analysis, claims made by a provider that has been flagged
+for potential fraud also receive the "potential fraud" label.
+
+<div class="summary-code-block">
+
+```{r, claims-summary, echo=FALSE, cache=TRUE}
+plot_summary(claims_concatenated, title = 'Hospital visits',
+             x_label = 'Visit type', y_label = 'visits')
+```
+
+</div>
 
 Patients
 
@@ -250,6 +345,16 @@ Patients
   - Number of outpatients:  133,980
   - Number of patients receiving both inpatient and outpatient care:  26,713
 
+<div class="summary-code-block">
+
+```{r, patients-summary, echo=FALSE, cache=TRUE}
+plot_summary(patients_combined, title = 'Patients',
+             x_label = 'Visit type', y_label = 'patients',
+             percent_plot = FALSE)
+```
+
+</div>
+
 Doctors
 
   - Number of doctors:  100,737
@@ -257,12 +362,15 @@ Doctors
   - Number of outpatient doctors:  89,770
   - Number of doctors giving both inpatient and outpatient care:  7,289
 
-Healthcare providers
+<div class="summary-code-block">
 
-  - Number of providers:  5,410
-  - Number of providers giving inpatient care:  2,092
-  - Number of providers giving outpatient care:  5,012
-  - Number of providers giving both inpatient and outpatient care:  1,694
+```{r, doctors-summary, echo=FALSE, cache=TRUE}
+plot_summary(doctors_combined, title = 'Doctors',
+             x_label = 'Service type', y_label = 'doctors',
+             percent_plot = FALSE)
+```
+
+</div>
 
 # Analysis
 
@@ -454,9 +562,88 @@ plot_top_visit_reasons(freq_admit_codes, 'outpatient')
 
 </div>
 
-## Consumption of Resources {.tabset}
+## Visit / claim durations
+
+### Inpatient visit duration {.tabset .unnumbered}
+
+#### Summary {.unnumbered}
+
+The 36-day bound on visit durations is striking.  I didn't find any indication
+that 36 days is a significant threshold for visit durations covered by
+Medicare.
+
+  - This may be an artifact of the (unknown) process by which data was
+    selected for inclusion in the dataset.  However, further research into
+    this questions could also be worthwhile.
+
+#### Distribution {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, visit-duration-distribution, cache=TRUE}
+title <- 'Distribution of inpatient visit duration'
+fig_base <- inpatient_claims %>%
+    ggplot(aes(x = visit_duration)) +
+    xlab('Duration (days)') +
+    ggtitle(title)
+plot_bar_charts(fig_base, 'visits')
+```
+
+</div>
+
+#### By age {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, show-visit-duration, ref.label='visit-duration', eval=FALSE}
+```
+
+```{r, visit-duration, echo=FALSE, cache=TRUE}
+fig <- inpatient_claims %>%
+    ggplot(aes(x = patient_age, y = visit_duration)) +
+    geom_point(aes(color = PotentialFraud)) +
+    #geom_point(color = 'navyblue') +
+    scale_x_continuous('Age') +
+    scale_y_continuous('Visit duration') +
+    ggtitle('Dependence of visit duration on patient age')
+print(fig)
+
+to_plot <- inpatient_claims %>%
+    select(BeneID, visit_duration) %>%
+    left_join(
+        select(inpatients, BeneID, all_of(chronic_conditions)),
+        by = 'BeneID'
+    ) %>%
+    mutate(across(all_of(chronic_conditions), ~ (.) == 'Y'))
+to_plot$number_of_conditions <- factor(rowSums(to_plot[, chronic_conditions]))
+fig <- to_plot %>%
+    ggplot(aes(x = number_of_conditions, y = visit_duration)) +
+    geom_boxplot(aes(fill = number_of_conditions)) +
+    xlab('Number of chronic conditions') +
+    scale_y_continuous('Visit duration') +
+    guides(fill = FALSE) +
+    ggtitle('Dependence of visit duration on number of chronic conditions')
+print(fig)
+```
+
+</div>
+
+
+## Payments {.tabset}
 
 ### Summary {.unnumbered}
+
+### Discussion {.unnumbered}
+
+### By chronic condition {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, payments, cache=TRUE}
+plot_payments_by_chronic(patients)
+```
+
+</div>
 
 ## Questions 1 {.tabset}
 
@@ -547,16 +734,6 @@ or the average charge per visit.
 ### Consumption of resources {.unnumbered}
 
 The original question was about how many resources are consumed by different classes of patients.  That could still be interesting to include.
-
-### Payments {.tab-display .unnumbered}
-
-<div class="code-block">
-
-```{r, payments, cache=TRUE}
-plot_payments(patients)
-```
-
-</div>
 
 ## Questions 3 {.tabset}
 
@@ -688,39 +865,6 @@ for (claim_type in claim_types) {
         print(fig)
     }
 }
-```
-
-</div>
-
-### Visit duration {.tab-display .unnumbered}
-
-<div class="code-block">
-
-```{r, visit-duration-1, cache=TRUE}
-fig <- inpatient_claims %>%
-    ggplot(aes(x = patient_age, y = visit_duration)) +
-    geom_point(color = 'navyblue') +
-    scale_x_continuous('Age') +
-    scale_y_continuous('Visit duration') +
-    ggtitle('Dependence of visit duration on patient age')
-print(fig)
-
-to_plot <- inpatient_claims %>%
-    select(BeneID, visit_duration) %>%
-    left_join(
-        select(inpatients, BeneID, all_of(chronic_conditions)),
-        by = 'BeneID'
-    ) %>%
-    mutate(across(all_of(chronic_conditions), ~ (.) == 'Y'))
-to_plot$number_of_conditions <- factor(rowSums(to_plot[, chronic_conditions]))
-fig <- to_plot %>%
-    ggplot(aes(x = number_of_conditions, y = visit_duration)) +
-    geom_boxplot(aes(fill = number_of_conditions)) +
-    xlab('Number of chronic conditions') +
-    scale_y_continuous('Visit duration') +
-    guides(fill = FALSE) +
-    ggtitle('Dependence of visit duration on number of chronic conditions')
-print(fig)
 ```
 
 </div>

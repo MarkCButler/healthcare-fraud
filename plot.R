@@ -133,20 +133,31 @@ log_scale_dollar <- function(axis_label, axis) {
 
 # Plot a bar chart in two formats.  Note that the argument geom_func can be
 # geom_bar or geom_col.
-plot_bar_charts <- function(fig_base, y_label, geom_func = geom_bar) {
-    fig <- fig_base +
-        geom_func(fill = 'navyblue') +
-        scale_y_continuous(str_c('Number of ', y_label),
-                           labels = label_comma())
-    print(fig)
+plot_bar_charts <- function(fig_base, y_label, geom_func = geom_bar,
+                            number_plot = TRUE, percent_plot = TRUE) {
+    if (!number_plot & !percent_plot) {
+        # In principle the function could simply return here, but this error
+        # shouldn't be missed.
+        stop('In plot_bar_charts, no charts have been requested.')
+    }
 
-    fig <- fig_base +
-        geom_func(aes(fill = PotentialFraud),
-                 position = 'fill') +
-        scale_y_continuous(str_c('Percentage of ', y_label),
-                           labels = label_percent()) +
-        scale_fill_discrete('Potential fraud')
-    print(fig)
+    if (number_plot) {
+        fig <- fig_base +
+            geom_func(fill = 'navyblue') +
+            scale_y_continuous(str_c('Number of ', y_label),
+                               labels = label_comma())
+        print(fig)
+    }
+
+    if (percent_plot) {
+        fig <- fig_base +
+            geom_func(aes(fill = PotentialFraud),
+                      position = 'fill') +
+            scale_y_continuous(str_c('Percentage of ', y_label),
+                               labels = label_percent()) +
+            scale_fill_discrete('Potential fraud')
+        print(fig)
+    }
     invisible(fig)
 }
 
@@ -251,6 +262,16 @@ plot_seasonality <- function(series_data, stl_model, title) {
 #
 # These functions are defined in order to simplify the R markdown file.
 #############################################################################
+
+plot_summary <- function(data, title, x_label, y_label,
+                         number_plot = TRUE, percent_plot = TRUE) {
+    fig_base <- data %>%
+        ggplot(aes(x = fct_recode(claim_type, !!!renamed_claim_types))) +
+        xlab(x_label) +
+        ggtitle(title)
+    plot_bar_charts(fig_base, y_label, number_plot = number_plot,
+                    percent_plot = percent_plot)
+}
 
 plot_number_of_conditions <- function(patient_data, claim_type) {
     title <- str_c('Number of chronic conditions per ', claim_type)
@@ -426,7 +447,7 @@ plot_top_visit_reasons <- function(admit_codes, claim_type) {
     invisible(fig)
 }
 
-plot_payments <- function(patient_data, claim_types = NULL) {
+plot_payments_by_chronic <- function(patient_data, claim_types = NULL) {
     to_select <- c(payment_variables, chronic_conditions)
     if (is.null(claim_types)) {
         claim_types <- sort(names(patient_data))
