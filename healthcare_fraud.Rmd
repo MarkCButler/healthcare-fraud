@@ -1082,7 +1082,7 @@ for (claim_type in claim_types) {
 
 ### Summary {.unnumbered}
 
-### Answers {.tab-display .unnumbered}
+### Number of duplicates {.tab-display .unnumbered}
 
 <div class="code-block">
 
@@ -1139,54 +1139,35 @@ plot_histograms(fig_base, y_label = 'claims', bins = 30,
 
 ```
 
-```{r, questions-5b, cache=TRUE}
-message <- str_c(
-    'In a group of claims with identical codes, the earliest claim date is ',
-    'found.\nAs a shorthand, the claim(s) on that date is referred to as ',
-    '"original."\nIn the next two plots, the horizontal axis gives the ',
-    'percent of a provider\'s\nclaims that are "original."'
-)
-cat(message)
-plot_fraction_original(claims, 'inpatient')
-plot_fraction_original(claims, 'outpatient')
-```
 </div>
 
-## Questions 3 {.tabset}
-
-### Questions {.unnumbered}
-
-Based on the attribute **ClaimStartDt**, analyze the weekly service volume
-variations.
-
-What are the weekly patterns (weekly seasonalities) you observe for the
-demands on **inpatient** or **outpatient** services?
-
-Identify the top $5$ most frequent **ClmAdmitDiagnosisCodes** and trace their
-weekly seasonalities.  Display the patterns you find.
-
-For the inpatient patients, is there any pattern between the durations of the
-treatments and the patient attributes?
-
-For the monthly inpatient/outpatient claim counts of all the providers, please
-analyze the table of provider-month matrices and report any interesting
-findings.
-
-**hint**: dataframe's pivot_table method could be used to construct the
-provider-month matrix.
-
-### Answers {.tab-display .unnumbered}
+### Claims in identical groups {.tab-display .unnumbered}
 
 <div class="code-block">
 
-```{r, questions-3a, cache=TRUE}
-# From the plots of inpatient visits, it appears that the first and last weekly
-# dates with complete data may be 2008-12-29, 2009-12-21, respectively.
-#
-# For the outpatient data, possibly 2009-01-05, 2009-12-21.
-#
-# Outside of these ranges, it's possible that the data is incomplete, so show
-# weekly "seasonality" only in these ranges.
+</div>
+
+## Time series {.tabset}
+
+### Summary {.unnumbered}
+
+Plots of weekly visit counts were used to choose the range of dates included
+in a time-series decomposition of daily visit counts.
+
+The daily visit counts show a small weekly seasonality.  For instance, the
+most common day for the start of an outpatient visit is Monday, and the least
+common day is Friday.
+
+<div class="summary-code-block">
+
+```{r, series-summary, echo=FALSE, cache=TRUE}
+get_stl_model <- function(series_data) {
+    stl_model <- stlplus(series_data$count, t = series_data$ClaimStartDt,
+                         s.window = 'periodic', n.p = 7,
+                         t.window = 29)
+    return(stl_model)
+}
+
 valid_date_ranges <- list(
     inpatient = as_date(c('2008-12-29', '2009-12-27'),
                         format = '%Y-%m-%d'),
@@ -1194,6 +1175,34 @@ valid_date_ranges <- list(
                          format = '%Y-%m-%d')
 )
 
+date_range <- valid_date_ranges$outpatient
+to_plot <- claims$outpatient %>%
+    extract_series_data(date_range)
+stl_model <- get_stl_model(to_plot)
+
+title <- str_c('Weekly seasonality in visit count, outpatients')
+fig <- plot_seasonality(to_plot, stl_model, title)
+print(fig)
+```
+
+</div>
+
+### Weekly visit count {.unnumbered}
+
+From the plot of weekly inpatient visits, it appears that the first and last
+weekly dates with complete data may be 2008-12-29, 2009-12-21, respectively.
+
+For the outpatient data, the period in which weekly data appears complete is
+2009-01-05 to 2009-12-21.
+
+Outside of these ranges, it's possible that the data is incomplete, and so the
+time-series decomposition will include only the data in these ranges.
+
+<div class="tab-display">
+
+<div class="code-block">
+
+```{r, weekly-count, cache=TRUE}
 for (claim_type in claim_types) {
     to_plot <- claims[[claim_type]] %>%
         group_by(week_date) %>%
@@ -1209,14 +1218,17 @@ for (claim_type in claim_types) {
         ggtitle(title)
     print(fig)
 }
+```
 
-get_stl_model <- function(series_data) {
-    stl_model <- stlplus(series_data$count, t = series_data$ClaimStartDt,
-                         s.window = 'periodic', n.p = 7,
-                         t.window = 29)
-    return(stl_model)
-}
+</div>
 
+</div>
+
+### Daily visit count {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, daily-count, cache=TRUE}
 for (claim_type in claim_types) {
     date_range <- valid_date_ranges[[claim_type]]
     to_plot <- claims[[claim_type]] %>%
@@ -1251,7 +1263,18 @@ for (claim_type in claim_types) {
 
 </div>
 
-### Reason for visit {.tab-display .unnumbered}
+### By initial diagnosis {.unnumbered}
+
+Does the weekly seasonality depend on the reason for a hospital visit (as
+determined by the initial diagnosis code)?
+
+It is tempting to interpret the weekly seasonalities shown below as
+meaningful, but the variation during the week is quite small, and the number
+of samples is much smaller than for the full sets of inpatient or outpatient
+data.  Further analysis would be needed to determine whether these
+seasonalities are just random variations.
+
+<div class="tab-display">
 
 <div class="code-block">
 
@@ -1286,9 +1309,9 @@ for (claim_type in claim_types) {
 
 </div>
 
-## Questions 5 {.tabset}
+</div>
 
-### Questions {.unnumbered}
+## Questions 5
 
 An easier type of frauds is to submit duplicated claims using stolen patient
 IDs.
@@ -1312,7 +1335,7 @@ Summarize the duplicate record counts/provider and study if the statistics
 have different distributions between honest and potentialfraud providers.
 
 Do these potentially fraud providers reuse doctor IDs and/or patient IDs?  If
-so, these fradulent IDs (or if the doctors or patients willingly participate)
+so, these fraudulent IDs (or if the doctors or patients willingly participate)
 can be used as signals to the other types of fraudulent activities.
 
 Do these duplicated records show any anomaly in terms of geographic locations?
@@ -1323,10 +1346,3 @@ state/county information to infer their physical locations.
 Base on your best knowledge of suspicious activities in duplicating the
 patient claims, flag the providers accordingly. Compare with the
 **PotentialFraud** flags offered by the dataset and discuss.
-
-### Answers {.tab-display .unnumbered}
-
-<div class="code-block">
-
-```{r, questions-5c, cache=TRUE}
-```

@@ -736,37 +736,3 @@ plot_cost_per_day <- function(to_plot, variable_name, claim_type,
            col = 'navyblue',
            main = title)
 }
-
-plot_fraction_original <- function(duplicates_data, claim_type) {
-    to_plot <- duplicates_data[[claim_type]] %>%
-        filter_out_no_codes() %>%
-        group_by(Provider, PotentialFraud) %>%
-        summarise(
-            original_claims = sum(provider_is_original),
-            number_of_claims = n(),
-            .groups = 'drop'
-        ) %>%
-        mutate(fraction_original = original_claims / number_of_claims)
-
-    title <- str_c('Percentage of claims by provider that are original, ',
-                   claim_type, 's')
-    x_axis_label <- 'Percentage of claims by provider that are original'
-    fig_base <- to_plot %>%
-        ggplot(aes(x = fraction_original)) +
-        scale_x_continuous(x_axis_label,
-                           labels = label_percent()) +
-        ggtitle(title)
-    plot_histograms(fig_base, y_label = 'providers', bins = 30)
-
-    title <- str_c('Number of claims vs percent that are original, ',
-                   claim_type, 's')
-    fig <- to_plot %>%
-        ggplot(aes(x = fraction_original, y = number_of_claims)) +
-        geom_point(aes(color = PotentialFraud)) +
-        ylab('Number of claims by provider') +
-        scale_x_continuous(x_axis_label,
-                           labels = label_percent()) +
-        scale_color_discrete('Potential fraud') +
-        ggtitle(title)
-    print(fig)
-}
