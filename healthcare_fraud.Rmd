@@ -586,13 +586,19 @@ The plots below show that for inpatient claims, both doctors and patients can
 both be roughly classified into two groups:  those with no fraudulent claims
 and those with only fraudulent claims.
 
-For patients, however, there is a small but still significant fraction that
-has 50% fraudulent claims.  There may be a distinct fraud mechanism associated
-with this smaller group.
+  - For outpatient claims, the same pattern can be seem among doctors, but
+    the pattern is less pronounced among patients.
 
-Note that in the category of inpatients having only a single claim, the median
-percentage of fraudulent claims is 100%.  (About 57% of the inpatients with
-only a single claim are associated with a fraudulent provider.)
+The first plot below also shows, however, a small but still significant
+fraction of inpatients has 50% fraudulent claims.
+
+  - The may be distinct fraud methods associated with the different parts of
+    the distributions shown in the tabbed subsections.
+
+Note that the second plot below shows that in the category of inpatients
+having only a single claim, the median percentage of fraudulent claims is
+100%.  (About 57% of the inpatients with only a single claim are associated
+with a fraudulent provider.)
 
 <div class="summary-code-block">
 
@@ -916,9 +922,9 @@ plot_payments_by_chronic(patients)
 "Inpatient visit duration" is used here to mean the time between an
 inpatient's admission and discharge dates.
 
-Plots in the tabbed subsections show that inpatient visit duration depends on
-patient age and the number of chronic conditions a patient has.  But there
-isn't a strong association between fraud and visit duration.
+Plots in the tabbed subsections show that inpatient visit duration is affected
+by patient age and by the number of chronic conditions a patient has.  But
+there isn't a strong association between fraud and visit duration.
 
 #### Distribution {.unnumbered}
 
@@ -1001,10 +1007,11 @@ The "claim duration", given by (ClaimEndDt - ClaimStartDt), appears to be
 the duration of the the patient's stay in the hospital, including any period
 in which the patient was not formally admitted as an inpatient.
 
-  - The claim duration is identical to the visit duration for most inpatients.
+  - For most inpatient claims, the claim duration is identical to the visit
+    duration.
   - The mean claim duration for outpatients is 2.4 days.
 
-Similarly to visit duration, claim curation does not have a strong association
+Similarly to visit duration, claim duration does not have a strong association
 with fraud.
 
 The distribution of visit cost per day is nearly identical for fraudulent and
@@ -1082,28 +1089,75 @@ for (claim_type in claim_types) {
 
 ### Summary {.unnumbered}
 
+It is natural to suspect that fraudulent claims are duplicates of legitimate
+claims in some sense, particularly given that the distribution of cost per day
+for fraudulent and legitimate claims is essentially identical.
+
+This section explores the possibility that an important method of duplication
+is to copy all diagnosis and procedure codes associated with a claim.
+
+The first plot below shows that only a tiny fraction of inpatient claims are
+duplicated in this way, so further research is needed into methods used to
+duplicate claims.
+
+<div class="summary-code-block">
+
+```{r, duplicate-summary-1, echo=FALSE, cache=TRUE}
+fig_base <- filter_out_no_codes(claims$inpatient) %>%
+    ggplot(aes(x = as.factor(identical_claim_count - 1))) +
+    xlab('Number of duplicate claims submitted') +
+    ggtitle('Number of duplicates submitted for inpatients')
+plot_bar_charts(fig_base, y_label = 'claims', percent_plot = FALSE)
+```
+
+</div>
+
+Even though only a small number of inpatient claims are duplicated in this way,
+analysis of identical groups of claims reveals a category containing only
+fraudulent claims.
+
+<div class="summary-code-block">
+
+```{r, duplicate-summary-2, echo=FALSE, cache=TRUE}
+title <- 'Number of claims per provider in identical groups, inpatients'
+fig_base <- filter_out_no_codes(inpatient_claims) %>%
+    filter(identical_claim_count > 1) %>%
+    ggplot(aes(x = as.factor(identical_claims_per_provider))) +
+    xlab('Number of claims per provider') +
+    ggtitle(title)
+plot_bar_charts(fig_base, 'claims')
+```
+
+</div>
+
 ### Number of duplicates {.tab-display .unnumbered}
 
 <div class="code-block">
 
-```{r, questions-5a, cache=TRUE}
-to_plot <- filter_out_no_codes(inpatient_claims)
-title_count_identical <- 'Number of duplicates submitted for '
-fig_base <- to_plot %>%
-    ggplot(aes(x = as.factor(identical_claim_count - 1))) +
-        xlab('Number of duplicate claims submitted') +
-        ggtitle(str_c(title_count_identical, 'inpatients'))
-plot_bar_charts(fig_base, 'claims')
+```{r, number-duplicates, cache=TRUE}
+plot_duplicate_counts(claims)
+```
 
-message <- str_c(
-    'Consider only the claims for which there is at least one duplicate,\n',
-    'and collect these into groups of identical claims.  The next plot\n',
-    'answers the question:\n\n',
-    'In these groups, how many providers are there per claim?\n'
-)
-cat(message)
+</div>
 
-to_plot <- to_plot %>%
+### Claims in identical groups {.unnumbered}
+
+Consider only the claims for which there is at least one duplicate, and
+collect these into groups of identical claims.  In these groups, how many
+claims are there per provider?
+
+The second plot below shows that for inpatient claims, the group with two
+claims per provider is 100% fraud.
+
+<div class="tab-display">
+
+<div class="summary-code-block">
+
+```{r, show-identical-claims, ref.label='identical-claims', eval=FALSE}
+```
+
+```{r, identical-claims, echo=FALSE, cache=TRUE}
+to_plot <- filter_out_no_codes(inpatient_claims) %>%
     filter(identical_claim_count > 1)
 
 title_per_provider <- 'Number of claims per provider in identical groups, '
@@ -1113,17 +1167,7 @@ fig_base <- to_plot %>%
     ggtitle(str_c(title_per_provider, 'inpatients'))
 plot_bar_charts(fig_base, 'claims')
 
-to_plot <- filter_out_no_codes(outpatient_claims)
-fig_base <- to_plot %>%
-    ggplot(aes(x = identical_claim_count - 1)) +
-    scale_x_continuous('Number of duplicate claims submitted',
-                       trans = pseudo_log_trans(base = 10),
-                       breaks = c(0, 10, 100, 1e3, 1e4),
-                       labels = label_comma(accuracy = 1)) +
-    ggtitle(str_c(title_count_identical, 'outpatients'))
-plot_histograms(fig_base, y_label = 'claims', bins = 20)
-
-to_plot <- to_plot %>%
+to_plot <- filter_out_no_codes(outpatient_claims) %>%
     filter(identical_claim_count > 1)
 
 fig_base <- to_plot %>%
@@ -1133,17 +1177,9 @@ fig_base <- to_plot %>%
     ggtitle(str_c(title_per_provider, 'outpatients'))
 plot_histograms(fig_base, y_label = 'claims', bins = 30,
                 breaks = seq(from = 20e3, to = 100e3, by = 20e3))
-
-# TODO (maybe):  Investigate the apparent outliers with ~2 claims per
-#   provider.
-
 ```
 
 </div>
-
-### Claims in identical groups {.tab-display .unnumbered}
-
-<div class="code-block">
 
 </div>
 
@@ -1152,7 +1188,15 @@ plot_histograms(fig_base, y_label = 'claims', bins = 30,
 ### Summary {.unnumbered}
 
 Plots of weekly visit counts were used to choose the range of dates included
-in a time-series decomposition of daily visit counts.
+in time-series decompositions.
+
+<div class="summary-code-block">
+
+```{r, series-summary-1, echo=FALSE, cache=TRUE}
+plot_weekly_counts(claims, 'outpatient')
+```
+
+</div>
 
 The daily visit counts show a small weekly seasonality.  For instance, the
 most common day for the start of an outpatient visit is Monday, and the least
@@ -1160,7 +1204,7 @@ common day is Friday.
 
 <div class="summary-code-block">
 
-```{r, series-summary, echo=FALSE, cache=TRUE}
+```{r, series-summary-2, echo=FALSE, cache=TRUE}
 get_stl_model <- function(series_data) {
     stl_model <- stlplus(series_data$count, t = series_data$ClaimStartDt,
                          s.window = 'periodic', n.p = 7,
@@ -1196,27 +1240,15 @@ For the outpatient data, the period in which weekly data appears complete is
 2009-01-05 to 2009-12-21.
 
 Outside of these ranges, it's possible that the data is incomplete, and so the
-time-series decomposition will include only the data in these ranges.
+time-series decompositions will include only the data in these ranges.
 
 <div class="tab-display">
 
-<div class="code-block">
+<div class="summary-code-block">
 
 ```{r, weekly-count, cache=TRUE}
 for (claim_type in claim_types) {
-    to_plot <- claims[[claim_type]] %>%
-        group_by(week_date) %>%
-        summarise(count = n(), .groups = 'drop')
-
-    title <- str_c('Weekly visit count, ', claim_type, 's')
-    fig <- to_plot %>%
-        ggplot(aes(x = week_date, y = count)) +
-        geom_point(color = 'navyblue') +
-        geom_line(color = 'navyblue') +
-        xlab('Date') +
-        ylab('Number of visits') +
-        ggtitle(title)
-    print(fig)
+    plot_weekly_counts(claims, claim_type)
 }
 ```
 
@@ -1271,12 +1303,12 @@ determined by the initial diagnosis code)?
 It is tempting to interpret the weekly seasonalities shown below as
 meaningful, but the variation during the week is quite small, and the number
 of samples is much smaller than for the full sets of inpatient or outpatient
-data.  Further analysis would be needed to determine whether these
-seasonalities are just random variations.
+claims.  Further analysis would be needed to determine whether these
+apparent seasonalities are just random noise.
 
 <div class="tab-display">
 
-<div class="code-block">
+<div class="summary-code-block">
 
 ```{r, codes, cache=TRUE}
 for (claim_type in claim_types) {
@@ -1311,38 +1343,5 @@ for (claim_type in claim_types) {
 
 </div>
 
-## Questions 5
+# Conclusion
 
-An easier type of frauds is to submit duplicated claims using stolen patient
-IDs.
-
-While multiple claims with identical information are not always fraudulent,
-the prevalence of these duplicated records would signal potential fraud
-activities.
-
-Consider the various diagnosis codes, procedure codes, admit diagnosis codes
-as the key features, please identify the duplicated claims in the
-inpatients_train, outpatients_train data.
-
-Are these potentially fraudulent providers duplicating their own medical
-records, or are they using the records from the other providers?
-
-Assuming that the claimStartDates are authentic, identify the providers which
-are the information receivers. Identify the providers which are the
-information givers.
-
-Summarize the duplicate record counts/provider and study if the statistics
-have different distributions between honest and potentialfraud providers.
-
-Do these potentially fraud providers reuse doctor IDs and/or patient IDs?  If
-so, these fraudulent IDs (or if the doctors or patients willingly participate)
-can be used as signals to the other types of fraudulent activities.
-
-Do these duplicated records show any anomaly in terms of geographic locations?
-Even though the original data doesn't specify the providers nor the doctors'
-practice locations, one may use the majority of the patients' residence
-state/county information to infer their physical locations.
-
-Base on your best knowledge of suspicious activities in duplicating the
-patient claims, flag the providers accordingly. Compare with the
-**PotentialFraud** flags offered by the dataset and discuss.

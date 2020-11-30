@@ -736,3 +736,47 @@ plot_cost_per_day <- function(to_plot, variable_name, claim_type,
            col = 'navyblue',
            main = title)
 }
+
+plot_duplicate_counts <- function(claim_data,
+                                  include_inpatient = TRUE,
+                                  include_outpatient = TRUE) {
+    title_count_identical <- 'Number of duplicates submitted for '
+
+    if (include_inpatient) {
+        to_plot <- filter_out_no_codes(claim_data$inpatient)
+        fig_base <- to_plot %>%
+            ggplot(aes(x = as.factor(identical_claim_count - 1))) +
+            xlab('Number of duplicate claims submitted') +
+            ggtitle(str_c(title_count_identical, 'inpatients'))
+        plot_bar_charts(fig_base, 'claims')
+    }
+
+    if (include_outpatient) {
+        to_plot <- filter_out_no_codes(claim_data$outpatient)
+        fig_base <- to_plot %>%
+            ggplot(aes(x = identical_claim_count - 1)) +
+            scale_x_continuous('Number of duplicate claims submitted',
+                               trans = pseudo_log_trans(base = 10),
+                               breaks = c(0, 10, 100, 1e3, 1e4),
+                               labels = label_comma(accuracy = 1)) +
+            ggtitle(str_c(title_count_identical, 'outpatients'))
+        plot_histograms(fig_base, y_label = 'claims', bins = 20)
+    }
+}
+
+plot_weekly_counts <- function(claim_data, claim_type) {
+    to_plot <- claim_data[[claim_type]] %>%
+        group_by(week_date) %>%
+        summarise(count = n(), .groups = 'drop')
+
+    title <- str_c('Weekly visit count, ', claim_type, 's')
+    fig <- to_plot %>%
+        ggplot(aes(x = week_date, y = count)) +
+        geom_point(color = 'navyblue') +
+        geom_line(color = 'navyblue') +
+        xlab('Date') +
+        ylab('Number of visits') +
+        ggtitle(title)
+    print(fig)
+    invisible(fig)
+}
