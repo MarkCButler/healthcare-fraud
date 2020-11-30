@@ -615,18 +615,7 @@ exclusively in the "only fraudulent claims" group.
 <div class="summary-code-block">
 
 ```{r, doctors-fraud-summary, echo=FALSE, cache=TRUE}
-plot_fraud_vs_legit <- function(data, claim_type) {
-    title <- 'Fraudulent claims vs total claims per doctor'
-    fig <- data[[claim_type]] %>%
-        ggplot(aes(x = claim_count, y = claim_count_fraud)) +
-        geom_point(color = 'navyblue') +
-        xlab('Total claims per doctor') +
-        ylab('Fraudulent claims per doctor') +
-        ggtitle(title)
-    print(fig)
-    invisible(fig)
-}
-plot_fraud_vs_legit(doctors, claim_type)
+plot_fraud_vs_legit(doctors, 'inpatient')
 title <- str_c('Percentage of fraudulent claims per doctor,',
                '\ninpatient claims')
 axis_label <- str_c('Percentage fraudulent claims')
@@ -805,7 +794,7 @@ fig <- patients$inpatient %>%
     ggplot(aes_string(x = variable_name)) +
     geom_point(aes(y = claim_fraud_fraction),
                color = 'navyblue') +
-    log_scale_dollar(axis_label = 'Payment_amount', axis ='x') +
+    log_scale_dollar(axis_label = 'Payment_amount', axis = 'x') +
     scale_y_continuous('Patient percentage fraudulent claims',
                        labels = label_percent()) +
     ggtitle(title)
@@ -831,6 +820,45 @@ for (claim_type in claim_types) {
 
 </div>
 
+### Payments by insurer / patient {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, questions-4a, cache=TRUE}
+for (claim_type in claim_types) {
+    to_plot <- claims[[claim_type]] %>%
+        select(visit_cost, InscClaimAmtReimbursed,
+               DeductibleAmtPaid, PotentialFraud) %>%
+        filter(visit_cost != 0) %>%
+        mutate(percent_covered = InscClaimAmtReimbursed / visit_cost)
+
+    title <- str_c('Insurer payments, ', claim_type, ' visits')
+    plot_payment_distribution(to_plot, InscClaimAmtReimbursed, title)
+
+    title <- str_c('Deductible, ', claim_type, ' visits')
+    plot_payment_distribution(to_plot, DeductibleAmtPaid, title)
+
+    title <- str_c('Insurer payment vs deductible, ', claim_type, ' visits')
+    fig <- to_plot %>%
+        ggplot(aes(x = DeductibleAmtPaid, y = InscClaimAmtReimbursed)) +
+        geom_point(aes(color = PotentialFraud)) +
+        log_scale_dollar('Deductible', 'x') +
+        log_scale_dollar('Payment by insurer', 'y') +
+        ggtitle(title)
+    print(fig)
+
+    title <- str_c('Percent covered by insurer, ', claim_type, ' visits')
+    fig_base <- to_plot %>%
+        ggplot(aes(percent_covered)) +
+        scale_x_continuous('Percent covered by insurer',
+                           labels = percent_format()) +
+        ggtitle(title)
+    plot_histograms(fig_base, y_label = 'visits', bins = 30)
+}
+```
+
+</div>
+
 ### Payments per patient {.tab-display .unnumbered}
 
 <div class="code-block">
@@ -850,7 +878,7 @@ for (claim_type in claim_types) {
             ggplot(aes_string(x = variable_name)) +
             geom_point(aes(y = claim_fraud_fraction),
                        color = 'navyblue') +
-            log_scale_dollar(axis_label = 'Payment_amount', axis ='x') +
+            log_scale_dollar(axis_label = 'Payment_amount', axis = 'x') +
             scale_y_continuous('Patient percentage fraudulent claims',
                                labels = label_percent()) +
             ggtitle(title)
@@ -965,25 +993,73 @@ print(fig)
 
 #### Summary {.unnumbered}
 
-"Claim duration" is evaluated as (ClaimEndDt -
+As discussed in the tabbed subsection *Terminology* of Sec. 2 above, patients
+can stay at a hospital for multiple nights without being formally admitted as
+an inpatient.
 
-#### Claim durations {.tab-display .unnumbered}
+The "claim duration", given by (ClaimEndDt - ClaimStartDt), appears to be
+the duration of the the patient's stay in the hospital, including any period
+in which the patient was not formally admitted as an inpatient.
+
+  - The claim duration is identical to the visit duration for most inpatients.
+  - The mean claim duration for outpatients is 2.4 days.
+
+Similarly to visit duration, claim curation does not have a strong association
+with fraud.
+
+The distribution of visit cost per day is nearly identical for fraudulent and
+legitimate claims, as illustrated in the plots below.
+
+  - The underlying structure responsible for this similarity may be
+    widespread duplication of legitimate claims.
+
+<div class="summary-code-block">
+
+```{r, claim-duration-summary, echo=FALSE, cache=TRUE}
+    to_plot <- claims$outpatient %>%
+        filter(visit_cost != 0) %>%
+        select(PotentialFraud, claim_duration, cost_per_claim_day)
+    plot_cost_per_day(to_plot, variable_name = 'cost_per_claim_day',
+                      claim_type = 'outpatient', duration_label = 'claim')
+```
+
+</div>
+
+#### Distribution {.unnumbered}
+
+Note that for both inpatient and outpatient visits, the claims with maximum
+value of claim duration are all fraudulent.  Close inspection of the plots,
+however, shows that these "all fraud" bars correspond to a very small number
+of claims.
+
+  - For example, there are a significant number of inpatient visits with
+    claim duration of 36 days.  But the bar showing 100% fraud is for claim
+    duration of 37 days, which includes just 2 inpatient claims.
+
+<div class="tab-display">
 
 <div class="code-block">
 
 ```{r, claim-duration, cache=TRUE}
 for (claim_type in claim_types) {
-    title <- str_c('Mean claim duration by provider, ', claim_type, ' visits')
-    fig <- providers[[claim_type]] %>%
-        ggplot(aes(x = PotentialFraud, y = mean_claim_duration)) +
-        geom_boxplot(aes(fill = PotentialFraud)) +
-        scale_y_continuous('Mean claim duration (days)') +
-        xlab('Provider flagged for potential fraud') +
-        guides(fill = FALSE) +
+    title <- str_c('Distribution of ', claim_type, ' claim duration')
+    fig_base <- claims[[claim_type]] %>%
+        ggplot(aes(x = claim_duration)) +
+        xlab('Duration (days)') +
         ggtitle(title)
-    print(fig)
+plot_bar_charts(fig_base, 'visits')
 }
+```
 
+</div>
+
+</div>
+
+#### Cost / cost per day {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, claim-duration-cost, cache=TRUE}
 for (claim_type in claim_types) {
     to_plot <- claims[[claim_type]] %>%
         filter(visit_cost != 0) %>%
@@ -1000,6 +1076,80 @@ for (claim_type in claim_types) {
 }
 ```
 
+</div>
+
+## Duplicated claims {.tabset}
+
+### Summary {.unnumbered}
+
+### Answers {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, questions-5a, cache=TRUE}
+to_plot <- filter_out_no_codes(inpatient_claims)
+title_count_identical <- 'Number of duplicates submitted for '
+fig_base <- to_plot %>%
+    ggplot(aes(x = as.factor(identical_claim_count - 1))) +
+        xlab('Number of duplicate claims submitted') +
+        ggtitle(str_c(title_count_identical, 'inpatients'))
+plot_bar_charts(fig_base, 'claims')
+
+message <- str_c(
+    'Consider only the claims for which there is at least one duplicate,\n',
+    'and collect these into groups of identical claims.  The next plot\n',
+    'answers the question:\n\n',
+    'In these groups, how many providers are there per claim?\n'
+)
+cat(message)
+
+to_plot <- to_plot %>%
+    filter(identical_claim_count > 1)
+
+title_per_provider <- 'Number of claims per provider in identical groups, '
+fig_base <- to_plot %>%
+    ggplot(aes(x = as.factor(identical_claims_per_provider))) +
+    xlab('Number of claims per provider') +
+    ggtitle(str_c(title_per_provider, 'inpatients'))
+plot_bar_charts(fig_base, 'claims')
+
+to_plot <- filter_out_no_codes(outpatient_claims)
+fig_base <- to_plot %>%
+    ggplot(aes(x = identical_claim_count - 1)) +
+    scale_x_continuous('Number of duplicate claims submitted',
+                       trans = pseudo_log_trans(base = 10),
+                       breaks = c(0, 10, 100, 1e3, 1e4),
+                       labels = label_comma(accuracy = 1)) +
+    ggtitle(str_c(title_count_identical, 'outpatients'))
+plot_histograms(fig_base, y_label = 'claims', bins = 20)
+
+to_plot <- to_plot %>%
+    filter(identical_claim_count > 1)
+
+fig_base <- to_plot %>%
+    ggplot(aes(x = identical_claims_per_provider)) +
+    scale_x_continuous('Number of claims per provider',
+                       breaks = seq(from = 1.0, to = 2.2, by = 0.2)) +
+    ggtitle(str_c(title_per_provider, 'outpatients'))
+plot_histograms(fig_base, y_label = 'claims', bins = 30,
+                breaks = seq(from = 20e3, to = 100e3, by = 20e3))
+
+# TODO (maybe):  Investigate the apparent outliers with ~2 claims per
+#   provider.
+
+```
+
+```{r, questions-5b, cache=TRUE}
+message <- str_c(
+    'In a group of claims with identical codes, the earliest claim date is ',
+    'found.\nAs a shorthand, the claim(s) on that date is referred to as ',
+    '"original."\nIn the next two plots, the horizontal axis gives the ',
+    'percent of a provider\'s\nclaims that are "original."'
+)
+cat(message)
+plot_fraction_original(claims, 'inpatient')
+plot_fraction_original(claims, 'outpatient')
+```
 </div>
 
 ## Questions 3 {.tabset}
@@ -1136,126 +1286,6 @@ for (claim_type in claim_types) {
 
 </div>
 
-## Questions 4 {.tabset}
-
-### Questions {.unnumbered}
-
-Study the distributions of **InscClaimAmtReimbursed**, **DeductibleAmtPaid**
-for both inpatient and outpatient services. Your team might want to work with
-hist, scatter or sns.pairplot, distplot, etc.
-
-Study the distributions of insurance covered percentages
-**InscClaimAmtReimbursed/(InscClaimAmtReimbursed+DeductibleAmtPaid)**.
-
-Study the distributions of the durations of average insurance claims
-(end-start) of the providers?  Box-plot/violin-plot based on the
-**PotentialFraud** flag. Do you find any differences for none-potential fraud
-vs potential-fraud providers?
-
-How are the service durations related to the total claim amounts, i.e.
-InscClaimAmtReimbursed+DeductibleAmtPaid?
-
-Consider mean daily total charges (i.e. total charge/duration), please
-describe their distribution.  How do the **Potential Fraud** flag affect the
-distribution patterns?
-
-### Answers {.tab-display .unnumbered}
-
-<div class="code-block">
-
-```{r, questions-4a, cache=TRUE}
-for (claim_type in claim_types) {
-    to_plot <- claims[[claim_type]] %>%
-        select(visit_cost, InscClaimAmtReimbursed, DeductibleAmtPaid) %>%
-        filter(visit_cost != 0) %>%
-        mutate(percent_covered = InscClaimAmtReimbursed / visit_cost)
-
-    title <- str_c('Insurer payments, ', claim_type, ' visits')
-    fig <- plot_payment_distribution(to_plot, InscClaimAmtReimbursed, title)
-    print(fig)
-
-    title <- str_c('Deductible, ', claim_type, ' visits')
-    fig <- plot_payment_distribution(to_plot, DeductibleAmtPaid, title)
-    print(fig)
-
-    title <- str_c('Insurer payment vs deductible, ', claim_type, ' visits')
-    fig <- to_plot %>%
-        ggplot(aes(x = DeductibleAmtPaid, y = InscClaimAmtReimbursed)) +
-        geom_point(color = 'navyblue') +
-        log_scale_dollar('Deductible', 'x') +
-        log_scale_dollar('Payment by insurer', 'y') +
-        ggtitle(title)
-    print(fig)
-
-    title <- str_c('Percent covered by insurer, ', claim_type, ' visits')
-    fig <- to_plot %>%
-        ggplot(aes(percent_covered)) +
-        geom_histogram(fill = 'navyblue', bins = 30) +
-        scale_x_continuous('Percent covered by insurer',
-                           labels = percent_format()) +
-        scale_y_continuous('Number of visits', labels = label_comma()) +
-        ggtitle(title)
-    print(fig)
-}
-```
-
-</div>
-
-### Visit duration {.tab-display .unnumbered}
-
-<div class="code-block">
-
-```{r, visit-duration-2, cache=TRUE}
-to_plot <- inpatient_claims %>%
-    filter(visit_cost != 0) %>%
-    select(PotentialFraud, visit_cost, visit_duration, cost_per_visit_day,
-           claim_duration)
-
-    title <- str_c('Claim amount vs visit duration, inpatient visits')
-    fig_base <- to_plot %>%
-        ggplot(aes(x = visit_duration, y = visit_cost)) +
-        scale_x_continuous('Visit duration (days)')
-    plot_cost_vs_duration(fig_base, title)
-
-    plot_cost_per_day(to_plot, variable_name = 'cost_per_visit_day',
-                      claim_type = 'inpatient', duration_label = 'visit')
-
-to_plot <- to_plot %>%
-    mutate(duration_ratio = visit_duration / claim_duration)
-
-fig <- to_plot %>%
-    ggplot(aes(x = duration_ratio)) +
-    geom_histogram(fill = 'navyblue') +
-    ylab('Number of claims') +
-    xlab('Ratio (visit duration / claim_duration)') +
-    ggtitle('Ratio of visit_duration to claim duration')
-print(fig)
-
-to_plot <- to_plot %>%
-    select(-visit_cost, -cost_per_visit_day) %>%
-    pivot_longer(c(visit_duration, claim_duration),
-                 names_to = 'duration_type',
-                 values_to = 'duration')
-
-fig <- to_plot %>%
-    ggplot(aes(x = duration)) +
-    scale_x_discrete('Duration (days)') +
-    geom_bar(
-        aes(fill = duration_type), position = 'identity',
-        alpha = 0.15
-    ) +
-    geom_freqpoly(
-        aes(color = duration_type), position = 'identity',
-        stat = 'count', size = 0.7
-    ) +
-    labs(y = 'Number of claims', fill = '', color = '') +
-    ggtitle('Claim duration and visit duration for inpatients')
-print(fig)
-
-```
-
-</div>
-
 ## Questions 5 {.tabset}
 
 ### Questions {.unnumbered}
@@ -1271,7 +1301,7 @@ Consider the various diagnosis codes, procedure codes, admit diagnosis codes
 as the key features, please identify the duplicated claims in the
 inpatients_train, outpatients_train data.
 
-Are these potentially fradulent providers duplicating their own medical
+Are these potentially fraudulent providers duplicating their own medical
 records, or are they using the records from the other providers?
 
 Assuming that the claimStartDates are authentic, identify the providers which
@@ -1293,76 +1323,6 @@ state/county information to infer their physical locations.
 Base on your best knowledge of suspicious activities in duplicating the
 patient claims, flag the providers accordingly. Compare with the
 **PotentialFraud** flags offered by the dataset and discuss.
-
-### Answers {.tab-display .unnumbered}
-
-<div class="code-block">
-
-```{r, questions-5a, cache=TRUE}
-to_plot <- filter_out_no_codes(inpatient_claims)
-title_count_identical <- 'Number of duplicates submitted for '
-fig_base <- to_plot %>%
-    ggplot(aes(x = as.factor(identical_claim_count - 1))) +
-        xlab('Number of duplicate claims submitted') +
-        ggtitle(str_c(title_count_identical, 'inpatients'))
-plot_bar_charts(fig_base, 'claims')
-
-message <- str_c(
-    'Consider only the claims for which there is at least one duplicate,\n',
-    'and collect these into groups of identical claims.  The next plot\n',
-    'answers the question:\n\n',
-    'In these groups, how many providers are there per claim?\n'
-)
-cat(message)
-
-to_plot <- to_plot %>%
-    filter(identical_claim_count > 1)
-
-title_per_provider <- 'Number of claims per provider in identical groups, '
-fig_base <- to_plot %>%
-    ggplot(aes(x = as.factor(identical_claims_per_provider))) +
-    xlab('Number of claims per provider') +
-    ggtitle(str_c(title_per_provider, 'inpatients'))
-plot_bar_charts(fig_base, 'claims')
-
-to_plot <- filter_out_no_codes(outpatient_claims)
-fig_base <- to_plot %>%
-    ggplot(aes(x = identical_claim_count - 1)) +
-    scale_x_continuous('Number of duplicate claims submitted',
-                       trans = pseudo_log_trans(base = 10),
-                       breaks = c(0, 10, 100, 1e3, 1e4),
-                       labels = label_comma(accuracy = 1)) +
-    ggtitle(str_c(title_count_identical, 'outpatients'))
-plot_histograms(fig_base, y_label = 'claims', bins = 20)
-
-to_plot <- to_plot %>%
-    filter(identical_claim_count > 1)
-
-fig_base <- to_plot %>%
-    ggplot(aes(x = identical_claims_per_provider)) +
-    scale_x_continuous('Number of claims per provider',
-                       breaks = seq(from = 1.0, to = 2.2, by = 0.2)) +
-    ggtitle(str_c(title_per_provider, 'outpatients'))
-plot_histograms(fig_base, y_label = 'claims', bins = 30,
-                breaks = seq(from = 20e3, to = 100e3, by = 20e3))
-
-# TODO (maybe):  Investigate the apparent outliers with ~2 claims per
-#   provider.
-
-```
-
-```{r, questions-5b, cache=TRUE}
-message <- str_c(
-    'In a group of claims with identical codes, the earliest claim date is ',
-    'found.\nAs a shorthand, the claim(s) on that date is referred to as ',
-    '"original."\nIn the next two plots, the horizontal axis gives the ',
-    'percent of a provider\'s\nclaims that are "original."'
-)
-cat(message)
-plot_fraction_original(claims, 'inpatient')
-plot_fraction_original(claims, 'outpatient')
-```
-</div>
 
 ### Answers {.tab-display .unnumbered}
 

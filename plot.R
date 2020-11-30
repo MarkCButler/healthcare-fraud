@@ -473,6 +473,19 @@ plot_bar_chart_plain_fill <- function(to_plot,
     print(fig)
 }
 
+plot_fraud_vs_legit <- function(data, claim_type) {
+    title <- str_c('Fraudulent claims vs total claims per doctor',
+                   ',\n', claim_type, ' claims')
+    fig <- data[[claim_type]] %>%
+        ggplot(aes(x = claim_count, y = claim_count_fraud)) +
+        geom_point(color = 'navyblue') +
+        xlab('Total claims per doctor') +
+        ylab('Fraudulent claims per doctor') +
+        ggtitle(title)
+    print(fig)
+    invisible(fig)
+}
+
 plot_fraud_per_individual <- function(data,
                                       count_type,
                                       individual_type,
@@ -663,13 +676,11 @@ plot_provider_claim_counts <- function(claim_counts,
 }
 
 plot_payment_distribution <- function(data, variable, title) {
-    fig <- data %>%
+    fig_base <- data %>%
         ggplot(aes(x = {{variable}})) +
-        geom_histogram(fill = 'navyblue', bins = 30) +
         log_scale_dollar('Payment amount', 'x') +
-        scale_y_continuous('Number of visits', labels = label_comma()) +
         ggtitle(title)
-    return(fig)
+    plot_histograms(fig_base, y_label = 'visits', bins = 30)
 }
 
 plot_cost_vs_duration <- function(fig_base, title) {
@@ -717,12 +728,12 @@ plot_cost_per_day <- function(to_plot, variable_name, claim_type,
     cost_per_day_yes_fraud <- temp_data$cost_per_day %>%
         as.numeric()
 
-    title <- str_c('Q-Q plot, log(cost per day of ', duration_label,
-                   ' duration)')
+    title <- str_c('Q-Q plot, log( cost per day )')
     qqplot(cost_per_day_no_fraud,
            cost_per_day_yes_fraud,
            xlab = 'No fraud',
            ylab = 'Possible fraud',
+           col = 'navyblue',
            main = title)
 }
 
