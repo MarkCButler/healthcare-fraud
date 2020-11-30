@@ -699,7 +699,9 @@ the horizontal axis, this axis has been truncated, because a few doctors have a
 very large number of claims.  The true range can be seen from the scatter
 plots of fraudulent claims per doctor vs total claims per doctor.
 
-<div class="code-block tab-display">
+<div class="tab-display">
+
+<div class="code-block">
 
 ```{r, claims-per-doctor, cache=TRUE}
 for (claim_type in claim_types) {
@@ -716,21 +718,191 @@ for (claim_type in claim_types) {
 
 </div>
 
-## Visit / claim durations
+</div>
+
+## Provider claim counts {.tabset}
+
+### Summary {.unnumbered}
+
+There is a strong association between fraud and the number of claims submitted
+by a provider.
+
+The plot below illustrates this association for inpatient claims.  In this
+dataset, only fraudulent providers submit more than about 100 inpatient
+claims.
+
+<div class="summary-code-block">
+
+```{r, summary-claim-counts, echo=FALSE, cache=TRUE}
+plot_provider_claim_counts(provider_claim_counts, 'inpatient',
+                           include_months = FALSE, verbose = FALSE)
+```
+
+</div>
+
+### For 2009 {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, show-claim-counts-year, ref.label='claim-counts', eval=FALSE}
+```
+
+```{r, claim-counts-year, echo=FALSE, cache=TRUE}
+plot_provider_claim_counts(provider_claim_counts, 'inpatient',
+                           include_months = FALSE)
+plot_provider_claim_counts(provider_claim_counts, 'outpatient',
+                           include_months = FALSE)
+```
+
+</div>
+
+### By month {.unnumbered}
+
+Is there trend in the number of monthly claims submitted by providers during
+the year?
+
+The plots below show that there is a trend, but this trend does not have a
+significant association with fraud.
+
+<div class="tab-display">
+
+<div class="summary-code-block">
+
+```{r, show-claim-counts-month, ref.label='claim-counts', eval=FALSE}
+```
+
+```{r, claim-counts-month, echo=FALSE, cache=TRUE}
+plot_provider_claim_counts(provider_claim_counts, 'inpatient',
+                           include_year = FALSE)
+plot_provider_claim_counts(provider_claim_counts, 'outpatient',
+                           include_year = FALSE)
+```
+
+</div>
+
+</div>
+
+## Payments {.tabset}
+
+### Summary {.unnumbered}
+
+The cost of hospital visits doesn't show a strong association with fraud.
+
+For multiple measures of payment per patient, a scatter plot of payment vs the
+patient's percentage of fraudulent claims shows a symmetric pattern.  This
+association is potentially significant, although it is difficult to interpret.
+
+<div class="summary-code-block">
+
+```{r, payments-summary, echo=FALSE, cache=TRUE}
+variable_name <- payment_variables[1]
+title <- str_c(payment_labels[variable_name], ', inpatients')
+fig <- patients$inpatient %>%
+    select(all_of(variable_name), claim_fraud_fraction) %>%
+    # Patients for which the only visit has visit_cost == 0 show up
+    # with missing values for the columns in payment_variables.
+    drop_na() %>%
+    ggplot(aes_string(x = variable_name)) +
+    geom_point(aes(y = claim_fraud_fraction),
+               color = 'navyblue') +
+    log_scale_dollar(axis_label = 'Payment_amount', axis ='x') +
+    scale_y_continuous('Patient percentage fraudulent claims',
+                       labels = label_percent()) +
+    ggtitle(title)
+print(fig)
+```
+
+</div>
+
+### Visit cost {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, visit-cost, cache=TRUE}
+for (claim_type in claim_types) {
+    title <- str_c('Visit cost for ', claim_type, 's')
+    fig_base <- claims[[claim_type]] %>%
+        ggplot(aes(x = visit_cost)) +
+        log_scale_dollar('Visit cost', 'x') +
+        ggtitle(title)
+    plot_histograms(fig_base, y_label = 'visits', bins = 20)
+}
+```
+
+</div>
+
+### Payments per patient {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, payments-per-patient, cache=TRUE}
+for (claim_type in claim_types) {
+    to_plot <- patients[[claim_type]] %>%
+        select(all_of(payment_variables), claim_fraud_fraction) %>%
+        # Patients for which the only visit has visit_cost == 0 show up
+        # with missing values for the columns in payment_variables.
+        drop_na()
+
+    for (variable_name in payment_variables) {
+        title <- str_c(payment_labels[variable_name], ', ',
+                       claim_type, 's')
+        fig <- to_plot %>%
+            ggplot(aes_string(x = variable_name)) +
+            geom_point(aes(y = claim_fraud_fraction),
+                       color = 'navyblue') +
+            log_scale_dollar(axis_label = 'Payment_amount', axis ='x') +
+            scale_y_continuous('Patient percentage fraudulent claims',
+                               labels = label_percent()) +
+            ggtitle(title)
+        print(fig)
+    }
+}
+```
+
+</div>
+
+### By chronic condition {.unnumbered}
+
+Patient payments do not show a strong dependence on individual chronic
+conditions that a patient has, possibly because many patients have multiple
+chronic conditions.
+
+<div class="tab-display">
+
+<div class="code-block">
+
+```{r, payments-chronic, cache=TRUE}
+plot_payments_by_chronic(patients)
+```
+
+</div>
+
+</div>
+
+## Visit / claim duration
 
 ### Inpatient visit duration {.tabset .unnumbered}
 
 #### Summary {.unnumbered}
 
-The 36-day bound on visit durations is striking.  I didn't find any indication
-that 36 days is a significant threshold for visit durations covered by
-Medicare.
+"Inpatient visit duration" is used here to mean the time between an
+inpatient's admission and discharge dates.
+
+Plots in the tabbed subsections show that inpatient visit duration depends on
+patient age and the number of chronic conditions a patient has.  But there
+isn't a strong association between fraud and visit duration.
+
+#### Distribution {.unnumbered}
+
+The 36-day upper bound on visit durations is striking.  I didn't find any
+indication that 36 days is a significant threshold for inpatient visits
+covered by Medicare.
 
   - This may be an artifact of the (unknown) process by which data was
     selected for inclusion in the dataset.  However, further research into
     this questions could also be worthwhile.
 
-#### Distribution {.tab-display .unnumbered}
+<div class="tab-display">
 
 <div class="code-block">
 
@@ -745,23 +917,30 @@ plot_bar_charts(fig_base, 'visits')
 
 </div>
 
-#### By age {.tab-display .unnumbered}
+</div>
+
+#### Patient age {.tab-display .unnumbered}
 
 <div class="code-block">
 
-```{r, show-visit-duration, ref.label='visit-duration', eval=FALSE}
-```
-
-```{r, visit-duration, echo=FALSE, cache=TRUE}
+```{r, visit-duration-by-age, cache=TRUE}
 fig <- inpatient_claims %>%
     ggplot(aes(x = patient_age, y = visit_duration)) +
     geom_point(aes(color = PotentialFraud)) +
     #geom_point(color = 'navyblue') +
-    scale_x_continuous('Age') +
-    scale_y_continuous('Visit duration') +
-    ggtitle('Dependence of visit duration on patient age')
+    scale_x_continuous('Patient age (years)') +
+    scale_y_continuous('Visit duration (days)') +
+    ggtitle('Inpatient visit duration vs patient age')
 print(fig)
+```
 
+</div>
+
+#### Number of chronic conditions {.tab-display .unnumbered}
+
+<div class="code-block">
+
+```{r, visit-duration-by-conditions, cache=TRUE}
 to_plot <- inpatient_claims %>%
     select(BeneID, visit_duration) %>%
     left_join(
@@ -774,79 +953,54 @@ fig <- to_plot %>%
     ggplot(aes(x = number_of_conditions, y = visit_duration)) +
     geom_boxplot(aes(fill = number_of_conditions)) +
     xlab('Number of chronic conditions') +
-    scale_y_continuous('Visit duration') +
+    scale_y_continuous('Visit duration (days)') +
     guides(fill = FALSE) +
-    ggtitle('Dependence of visit duration on number of chronic conditions')
+    ggtitle('Inpatient visit duration vs number of chronic conditions')
 print(fig)
 ```
 
 </div>
 
+### Claim duration {.tabset .unnumbered}
 
-## Payments {.tabset}
+#### Summary {.unnumbered}
 
-### Summary {.unnumbered}
+"Claim duration" is evaluated as (ClaimEndDt -
 
-### Discussion {.unnumbered}
-
-### By chronic condition {.tab-display .unnumbered}
+#### Claim durations {.tab-display .unnumbered}
 
 <div class="code-block">
 
-```{r, payments, cache=TRUE}
-plot_payments_by_chronic(patients)
+```{r, claim-duration, cache=TRUE}
+for (claim_type in claim_types) {
+    title <- str_c('Mean claim duration by provider, ', claim_type, ' visits')
+    fig <- providers[[claim_type]] %>%
+        ggplot(aes(x = PotentialFraud, y = mean_claim_duration)) +
+        geom_boxplot(aes(fill = PotentialFraud)) +
+        scale_y_continuous('Mean claim duration (days)') +
+        xlab('Provider flagged for potential fraud') +
+        guides(fill = FALSE) +
+        ggtitle(title)
+    print(fig)
+}
+
+for (claim_type in claim_types) {
+    to_plot <- claims[[claim_type]] %>%
+        filter(visit_cost != 0) %>%
+        select(PotentialFraud, visit_cost, claim_duration, cost_per_claim_day)
+
+    title <- str_c('Claim amount vs claim duration, ', claim_type, ' visits')
+    fig_base <- to_plot %>%
+        ggplot(aes(x = claim_duration, y = visit_cost)) +
+        scale_x_continuous('Claim duration (days)')
+    plot_cost_vs_duration(fig_base, title)
+
+    plot_cost_per_day(to_plot, variable_name = 'cost_per_claim_day',
+                      claim_type = claim_type, duration_label = 'claim')
+}
 ```
 
 </div>
-
-## Questions 1 {.tabset}
-
-### Questions {.unnumbered}
-
-
-Do doctors serve for different providers? Study the distribution of hospital
-counts/doctor? Is it possible to characterize those doctors who move around
-among different providers?
-
-Do patients go to different hospitals? Study the distribution of hospital
-counts/patient? It is possible to characterize those patients who receive
-services from a lot of different hospitals?
-
-Do the same providers provide both inpatient and outpatient services?
-Summarize your finding.
-
-## Questions 2 {.tabset}
-
-### Questions {.unnumbered}
-
-Study the relationship between the patient ages (at the time of their
-service) and the counts of medical claims.
-
-Study the relationship between the patient age and their chronic conditions.
-Within the train-samples, do these chronic conditions show a definite trend
-with respect to increasing ages?
-
-In order to make sure the insurance premiums can cover the claims, the
-insurance company would need to categorize the patients according to their
-resource usage. In answering the question that what types of patients would
-make more outpatient visits, please provide your finding.
-
-In answering what types of patients would make more inpatient service claims,
-please provide your findings.
-
-From the prospect of the insurance company, the reimbursed amounts are their
-coverage on the claims.  Please analyze the patterns of the total reimbursed
-amounts (or average reimbursed amounts/visit) vs different types of patients.
-
-From the prospect of the providers, the sum of reimbursed amounts and
-deductibles are flowing to the providers. Based on this, analyze which types
-of patients contribute more to the providers in terms of the aggregate charges
-or the average charge per visit.
-
-
-### Consumption of resources {.unnumbered}
-
-The original question was about how many resources are consumed by different classes of patients.  That could still be interesting to include.
 
 ## Questions 3 {.tabset}
 
@@ -982,20 +1136,6 @@ for (claim_type in claim_types) {
 
 </div>
 
-### Provider claim counts {.tab-display .unnumbered}
-
-<div class="code-block">
-
-```{r, show-claim-counts, ref.label='claim-counts', eval=FALSE}
-```
-
-```{r, claim-counts, echo=FALSE, cache=TRUE}
-plot_provider_claim_counts(provider_claim_counts, 'inpatient')
-plot_provider_claim_counts(provider_claim_counts, 'outpatient')
-```
-
-</div>
-
 ## Questions 4 {.tabset}
 
 ### Questions {.unnumbered}
@@ -1056,41 +1196,6 @@ for (claim_type in claim_types) {
         scale_y_continuous('Number of visits', labels = label_comma()) +
         ggtitle(title)
     print(fig)
-}
-```
-
-</div>
-
-### Claim durations {.tab-display .unnumbered}
-
-<div class="code-block">
-
-```{r, claim-duration, cache=TRUE}
-for (claim_type in claim_types) {
-    title <- str_c('Mean claim duration by provider, ', claim_type, ' visits')
-    fig <- providers[[claim_type]] %>%
-        ggplot(aes(x = PotentialFraud, y = mean_claim_duration)) +
-        geom_boxplot(aes(fill = PotentialFraud)) +
-        scale_y_continuous('Mean claim duration (days)') +
-        xlab('Provider flagged for potential fraud') +
-        guides(fill = FALSE) +
-        ggtitle(title)
-    print(fig)
-}
-
-for (claim_type in claim_types) {
-    to_plot <- claims[[claim_type]] %>%
-        filter(visit_cost != 0) %>%
-        select(PotentialFraud, visit_cost, claim_duration, cost_per_claim_day)
-
-    title <- str_c('Claim amount vs claim duration, ', claim_type, ' visits')
-    fig_base <- to_plot %>%
-        ggplot(aes(x = claim_duration, y = visit_cost)) +
-        scale_x_continuous('Claim duration (days)')
-    plot_cost_vs_duration(fig_base, title)
-
-    plot_cost_per_day(to_plot, variable_name = 'cost_per_claim_day',
-                      claim_type = claim_type, duration_label = 'claim')
 }
 ```
 

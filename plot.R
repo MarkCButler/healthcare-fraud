@@ -348,7 +348,7 @@ plot_chronic_by_age <- function(patient_data, variable_name,
     for (claim_type in claim_types) {
         fig_base <- patient_data[[claim_type]] %>%
             ggplot(aes(x = age)) +
-            xlab('Patient age')
+            xlab('Patient age (years)')
 
         title <- str_c('Number of ', claim_type, 's with ', title_base,
                        ' by age')
@@ -402,7 +402,7 @@ plot_patient_age <- function(patient_data, claim_type) {
         ggplot(aes(x = age)) +
         geom_histogram(fill = 'navyblue', bins = 20) +
         ylab('Number of patients') +
-        xlab('Patient age') +
+        xlab('Patient age (years)') +
         ggtitle(title)
     print(fig)
     invisible(fig)
@@ -598,57 +598,68 @@ plot_payments_by_chronic <- function(patient_data, claim_types = NULL) {
     invisible(fig)
 }
 
-plot_provider_claim_counts <- function(claim_counts, claim_type) {
+plot_provider_claim_counts <- function(claim_counts,
+                                       claim_type,
+                                       include_year = TRUE,
+                                       include_months = TRUE,
+                                       verbose = TRUE) {
     plot_data <- claim_counts[[claim_type]] %>%
         filter(claim_year == 2009)
 
-    to_plot <- plot_data %>%
-        group_by(Provider) %>%
-        summarise(count = sum(claim_count), .groups = 'drop') %>%
-        left_join(
-            select(plot_data, Provider, PotentialFraud),
-            by = 'Provider'
-        )
+    if (include_year) {
+        to_plot <- plot_data %>%
+            group_by(Provider) %>%
+            summarise(count = sum(claim_count), .groups = 'drop') %>%
+            left_join(
+                select(plot_data, Provider, PotentialFraud),
+                by = 'Provider'
+            )
 
-    title <- str_c('Number of claims per provider in 2009, ', claim_type, 's')
-    fig_base <- to_plot %>%
-        ggplot(aes(x = count)) +
-        scale_x_continuous('Number of claims',
-                           trans = log_trans(base = 10),
-                           breaks = c(1, 10, 100, 1000),
-                           labels = label_comma(accuracy = 1)) +
-        ggtitle(title)
-    plot_histograms(fig_base, 'providers', bins = 30)
+        title <- str_c('Number of claims per provider in 2009, ', claim_type, 's')
+        fig_base <- to_plot %>%
+            ggplot(aes(x = count)) +
+            scale_x_continuous('Number of claims',
+                               trans = log_trans(base = 10),
+                               breaks = c(1, 10, 100, 1000),
+                               labels = label_comma(accuracy = 1)) +
+            ggtitle(title)
+        plot_histograms(fig_base, 'providers', bins = 30)
 
-    cat('The maximum number of ', claim_type, ' claims for a provider is ',
-        max(to_plot$count), '.\n', sep = '')
+        if (verbose) {
+            cat('The maximum number of ', claim_type,
+                ' claims for a provider in 2009 is ',
+                max(to_plot$count), '.\n', sep = '')
+        }
+    }
 
-    to_plot <- plot_data %>%
-        group_by(claim_month, PotentialFraud) %>%
-        summarise(count = sum(claim_count), .groups = 'drop')
+    if (include_months) {
+        to_plot <- plot_data %>%
+            group_by(claim_month, PotentialFraud) %>%
+            summarise(count = sum(claim_count), .groups = 'drop')
 
-    title <- str_c('Number of claims per month in 2009, ', claim_type, 's')
-    fig_base <- to_plot %>%
-        ggplot(aes(x = claim_month, y = count)) +
-        xlab('Month') +
-        ggtitle(title)
-    plot_bar_charts(fig_base, 'claims', geom_func = geom_col)
+        title <- str_c('Number of claims per month in 2009, ', claim_type, 's')
+        fig_base <- to_plot %>%
+            ggplot(aes(x = claim_month, y = count)) +
+            xlab('Month') +
+            ggtitle(title)
+        plot_bar_charts(fig_base, 'claims', geom_func = geom_col)
 
-    to_display <- plot_data %>%
-        group_by(claim_month) %>%
-        summarise(max_claims = max(claim_count), .groups = 'drop')
-    table_alignment <- list(className = 'dt-center', targets = '_all')
-    return(datatable(
-        to_display,
-        rownames = FALSE,
-        colnames = c('Month',
-                     str_c('Max ', claim_type, ' claims per provider')),
-        options = list(
-            dom = 't',
-            columnDefs = list(table_alignment),
-            pageLength = 12
-        )
-    ))
+        to_display <- plot_data %>%
+            group_by(claim_month) %>%
+            summarise(max_claims = max(claim_count), .groups = 'drop')
+        table_alignment <- list(className = 'dt-center', targets = '_all')
+        return(datatable(
+            to_display,
+            rownames = FALSE,
+            colnames = c('Month',
+                         str_c('Max ', claim_type, ' claims per provider')),
+            options = list(
+                dom = 't',
+                columnDefs = list(table_alignment),
+                pageLength = 12
+            )
+        ))
+    }
 }
 
 plot_payment_distribution <- function(data, variable, title) {
