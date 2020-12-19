@@ -15,11 +15,11 @@ editor_options:
 
 ```{js, echo=FALSE}
 // Add a picture to the top of the page.  JavaScript is used because the
-// formatting options for R markdown don't appear to allow an option to put
+// formatting options for R markdown don't appear to include an option to put
 // the image above the document title.
-let photo_html = '<img id="photo" src="images/fraud-photo.jpg" alt="photo">';
+let photoHTML = '<img id="photo" src="images/fraud-photo.jpg" alt="photo">';
 header = document.getElementById('header');
-header.innerHTML = photo_html + header.innerHTML;
+header.innerHTML = photoHTML + header.innerHTML;
 ```
 
 ```{r, setup, message=FALSE, include=FALSE}
@@ -67,12 +67,19 @@ chronic_conditions <- reorder_chronic_conditions(inpatients)
 
 Exploratory data analysis of a healthcare-fraud
 [dataset](https://www.kaggle.com/rohitrox/healthcare-provider-fraud-detection-analysis)
-from Kaggle is presented.  The analysis has two goals:
+from Kaggle is presented.
+
+Section 2 describes how clues in the dataset yield informed guesses about its
+scope.  Terminology and data integrity are also discussed.
+
+The exploratory analysis presented in Sec. 3 has two goals:
 
   - Provide general insight into the healthcare market represented by the
     dataset
   - Reveal associations involving the "potential fraud" label for healthcare
     providers in the training dataset
+
+A summary of fraud associations is presented in Sec. 4.
 
 # Dataset {.tabset}
 
@@ -82,7 +89,7 @@ The dataset contains training data and test data, each with four csv files.
 
 The training data was used for the analysis.  Details of the csv files:
 
-  - Inpatient visits to a hospital (30 columns, <nobr>~ 40,000</nobr> rows, )
+  - Inpatient visits to a hospital (30 columns, <nobr>~ 40,000</nobr> rows)
   - Outpatient visits to a hospital (27 columns, <nobr>~ 520,000</nobr> rows)
   - The patients who made these hospital visits (25 columns, <nobr>~ 140,000</nobr>
     rows)
@@ -135,7 +142,7 @@ failure).
   - Consistent with the special treatment of end-stage renal disease by
     Medicare, the table of patient info includes a boolean feature
     RenalDiseaseIndicator.  This column is among other columns that identify a
-    patient, such as birth date, gender and race.
+    patient, such as birthdate, gender and race.
   - The column names NoOfMonths_PartACov, NoOfMonths_PartBCov in the table of
     patients can also be understood in this context:  these columns likely
     gives the number of months in 2009 the patient had coverage by Medicare
@@ -207,10 +214,10 @@ about payments to doctors.
     features InscClaimAmtReimbursed and DeductibleAmtPaid.  Payments made by
     patients for doctor services are distinct from these two categories.
   - In principle the payments made by patients for doctor services could be
-    lumped in with feature DeductibleAmtPaid, but clearly this was not done for
-    inpatient visits, since all claims have $1068 or NA for this feature.  (As
-    noted above, $1068 is the 2009 deductible for an inpatient visit covered by
-    Medicare.)
+    lumped in with the feature DeductibleAmtPaid, but clearly this was not
+    done for inpatient visits, since all claims have $1068 or NA for this
+    feature.  (As noted above, $1068 is the 2009 deductible for an inpatient
+    visit covered by Medicare.)
   - Note that a "potential fraud" label is given for providers but not for
     doctors.  This focus on provider fraud may explain the apparent lack of
     information in the dataset about payments for doctor services.
@@ -221,7 +228,7 @@ An outpatient hospital visit is often defined as a
 [visit for which it is not necessary to stay overnight](https://www.pbmchealth.org/news-events/blog/difference-between-inpatient-and-outpatient-care)
 at the hospital.
 
-However Medicare defines an outpatient as one who has not formally been
+However, Medicare defines an outpatient as one who has not formally been
 admitted to a hospital with a doctor's order.  A
 [Medicare publication](https://www.medicare.gov/Pubs/pdf/11435-Are-You-an-Inpatient-or-Outpatient.pdf)
 explains that the decision to formally admit a patient is "a complex medical
@@ -308,7 +315,7 @@ Columns with NA:
      - These NA probably correspond to visits for which the deductible payment
        was zero, because the patient had already paid the one-time deductible
        for the year.
-     - However there are samples that have NA for DeductibleAmtPaid with
+     - However, there are samples that have NA for DeductibleAmtPaid with
        InscClaimAmtReimbursed equal to zero.  For instance, there are 25 rows
        of this sort in the training data.
 
@@ -386,7 +393,7 @@ plot_summary(doctors_combined, title = 'Doctors',
 
 # Analysis
 
-## Chronic Conditions {.tabset}
+## Chronic conditions {.tabset}
 
 ### Summary {.unnumbered}
 
@@ -586,13 +593,13 @@ The plots below show that for inpatient claims, both doctors and patients can
 both be roughly classified into two groups:  those with no fraudulent claims
 and those with only fraudulent claims.
 
-  - For outpatient claims, the same pattern can be seem among doctors, but
+  - For outpatient claims, the same pattern can be seen among doctors, but
     the pattern is less pronounced among patients.
 
 The first plot below also shows, however, a small but still significant
 fraction of inpatients has 50% fraudulent claims.
 
-  - The may be distinct fraud methods associated with the different parts of
+  - There may be distinct fraud methods associated with the different parts of
     the distributions shown in the tabbed subsections.
 
 Note that the second plot below shows that in the category of inpatients
@@ -934,7 +941,7 @@ covered by Medicare.
 
   - This may be an artifact of the (unknown) process by which data was
     selected for inclusion in the dataset.  However, further research into
-    this questions could also be worthwhile.
+    this question could also be worthwhile.
 
 <div class="tab-display">
 
@@ -1004,7 +1011,7 @@ can stay at a hospital for multiple nights without being formally admitted as
 an inpatient.
 
 The "claim duration", given by (ClaimEndDt - ClaimStartDt), appears to be
-the duration of the the patient's stay in the hospital, including any period
+the duration of the patient's stay in the hospital, including any period
 in which the patient was not formally admitted as an inpatient.
 
   - For most inpatient claims, the claim duration is identical to the visit
@@ -1343,5 +1350,30 @@ for (claim_type in claim_types) {
 
 </div>
 
-# Conclusion
+# Conclusion: fraud associations
 
+The strongest predictor of fraud in the dataset is the number of claims
+submitted by a provider.  The fraudulent providers, which represent a
+relatively small percentage of the total, are responsible for a substantial
+percentage of claims submitted.
+
+For inpatient claims, both doctors and patients can both be roughly classified
+into two groups:  those with no fraudulent claims and those with only
+fraudulent claims.
+
+  - For outpatient claims, the same pattern can be seen among doctors, but
+    the pattern is less pronounced among patients.
+
+In addition to this broad generalization, the analysis shows some subtler
+patterns in fraud associations involving patients.
+
+  - These patterns, which may be associated with distinct methods of fraud,
+    could be a guide in designing machine-learning methods of detecting fraud.
+
+Duplication of claims is a promising area for further investigation.
+
+  - The fact that the distribution of cost per day is essentially identical
+    for fraudulent and legitimate claims suggest that some form of claim
+    duplication may be widespread.
+  - A central question is which details of a claims are duplicated and which
+    are varied by fraudulent providers that generate a large number of claims.
