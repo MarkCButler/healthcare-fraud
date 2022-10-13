@@ -994,7 +994,7 @@ fig <- to_plot %>%
     geom_boxplot(aes(fill = number_of_conditions)) +
     xlab('Number of chronic conditions') +
     scale_y_continuous('Visit duration (days)') +
-    guides(fill = FALSE) +
+    guides(fill = 'none') +
     ggtitle('Inpatient visit duration vs number of chronic conditions')
 print(fig)
 ```

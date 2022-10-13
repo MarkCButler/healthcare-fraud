@@ -315,7 +315,7 @@ plot_chronic_count <- function(patient_data, claim_type) {
         annotate('text', x = 5.5, y = number_of_patients * 0.98,
                  label = line_label, hjust = 'right') +
         coord_flip() +
-        guides(fill = FALSE) +
+        guides(fill = 'none') +
         ggtitle(title)
     print(fig)
     invisible(fig)
@@ -447,7 +447,7 @@ plot_top_visit_reasons <- function(admit_codes, claim_type) {
         xlab('Reason for visit') +
         ylab('Number of visits') +
         coord_flip() +
-        guides(fill = FALSE) +
+        guides(fill = 'none') +
         ggtitle(title)
     print(fig)
     invisible(fig)
@@ -565,7 +565,7 @@ plot_fraud_per_individual <- function(data,
         xlab(str_c('Number of ', count_type,
                    's per ', individual_type)) +
         scale_y_continuous(axis_label, labels = label_percent()) +
-        guides(fill = FALSE) +
+        guides(fill = 'none') +
         ggtitle(title)
 
     if (!is.null(count_limit)) {
@@ -603,7 +603,7 @@ plot_payments_by_chronic <- function(patient_data, claim_types = NULL) {
                 log_scale_dollar(axis_label = 'Payment amount', axis = 'y') +
                 xlab('Chronic condition') +
                 coord_flip() +
-                guides(fill = FALSE) +
+                guides(fill = 'none') +
                 ggtitle(title)
             print(fig)
         }

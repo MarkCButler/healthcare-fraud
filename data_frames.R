@@ -174,7 +174,7 @@ combine_claim_types <- function(inpatient_data, outpatient_data, row_id,
         )
         both_claim_types <- inpatient_data %>%
             bind_rows(outpatient_data) %>%
-            filter(across(row_id,
+            filter(if_all(row_id,
                           ~ (.) %in% shared_row_id)) %>%
             group_by(across(row_id)) %>%
             summarise(
