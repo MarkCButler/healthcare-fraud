@@ -1,10 +1,10 @@
 ---
-title: 'Analysis of a Healthcare-Fraud Dataset'
+title: Analysis of a Healthcare-Fraud Dataset
 output:
   html_document:
     code_folding: hide
     css: style.css
-    highlight: tango
+    highlight: pygments
     number_sections: true
     theme: yeti
     toc: true
@@ -746,7 +746,7 @@ plot_provider_claim_counts(provider_claim_counts, 'inpatient',
 
 <div class="code-block">
 
-```{r, show-claim-counts-year, ref.label='claim-counts', eval=FALSE}
+```{r, show-claim-counts-year, ref.label='claim-counts-year', eval=FALSE}
 ```
 
 ```{r, claim-counts-year, echo=FALSE, cache=TRUE}
@@ -770,7 +770,7 @@ significant association with fraud.
 
 <div class="summary-code-block">
 
-```{r, show-claim-counts-month, ref.label='claim-counts', eval=FALSE}
+```{r, show-claim-counts-month, ref.label='claim-counts-month', eval=FALSE}
 ```
 
 ```{r, claim-counts-month, echo=FALSE, cache=TRUE}
@@ -968,7 +968,6 @@ plot_bar_charts(fig_base, 'visits')
 fig <- inpatient_claims %>%
     ggplot(aes(x = patient_age, y = visit_duration)) +
     geom_point(aes(color = PotentialFraud)) +
-    #geom_point(color = 'navyblue') +
     scale_x_continuous('Patient age (years)') +
     scale_y_continuous('Visit duration (days)') +
     ggtitle('Inpatient visit duration vs patient age')
@@ -1061,7 +1060,7 @@ for (claim_type in claim_types) {
         ggplot(aes(x = claim_duration)) +
         xlab('Duration (days)') +
         ggtitle(title)
-plot_bar_charts(fig_base, 'visits')
+    plot_bar_charts(fig_base, 'visits')
 }
 ```
 
